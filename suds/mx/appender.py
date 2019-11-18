@@ -18,15 +18,12 @@
 Provides appender classes for I{marshalling}.
 """
 
-from logging import getLogger
-from suds import null, tostr
-from suds.mx import Content
+from suds import *
+from suds.mx import *
 from suds.sudsobject import footprint
 from suds.sudsobject import Object, Property
 from suds.sax.element import Element
 from suds.sax.text import Text
-
-log = getLogger(__name__)
 
 
 class Matcher:
@@ -46,8 +43,7 @@ class Matcher:
     def __eq__(self, x):
         if self.cls is None:
             return x is None
-        else:
-            return isinstance(x, self.cls)
+        return isinstance(x, self.cls)
 
 
 class ContentAppender:
@@ -66,25 +62,15 @@ class ContentAppender:
         """
         self.default = PrimativeAppender(marshaller)
         self.appenders = (
-            (Matcher(None),
-                NoneAppender(marshaller)),
-            (Matcher(null),
-                NoneAppender(marshaller)),
-            (Matcher(Property),
-                PropertyAppender(marshaller)),
-            (Matcher(Object),
-                ObjectAppender(marshaller)),
-            (Matcher(Element),
-                ElementAppender(marshaller)),
-            (Matcher(Text),
-                TextAppender(marshaller)),
-            (Matcher(list),
-                ListAppender(marshaller)),
-            (Matcher(tuple),
-                ListAppender(marshaller)),
-            (Matcher(dict),
-                DictAppender(marshaller)),
-        )
+            (Matcher(None), NoneAppender(marshaller)),
+            (Matcher(null), NoneAppender(marshaller)),
+            (Matcher(Property), PropertyAppender(marshaller)),
+            (Matcher(Object), ObjectAppender(marshaller)),
+            (Matcher(Element), ElementAppender(marshaller)),
+            (Matcher(Text), TextAppender(marshaller)),
+            (Matcher(list), ListAppender(marshaller)),
+            (Matcher(tuple), ListAppender(marshaller)),
+            (Matcher(dict), DictAppender(marshaller)))
 
     def append(self, parent, content):
         """
@@ -95,9 +81,9 @@ class ContentAppender:
         @type content: L{Content}
         """
         appender = self.default
-        for a in self.appenders:
-            if a[0] == content.value:
-                appender = a[1]
+        for matcher, candidate_appender in self.appenders:
+            if matcher == content.value:
+                appender = candidate_appender
                 break
         appender.append(parent, content)
 
@@ -114,14 +100,14 @@ class Appender:
         @param marshaller: A marshaller.
         @type marshaller: L{suds.mx.core.Core}
         """
-        self.marshaller = marshaller
+        self.marshaller  = marshaller
 
     def node(self, content):
         """
         Create and return an XML node that is qualified
         using the I{type}.  Also, make sure all referenced namespace
         prefixes are declared.
-        @param content: The content for which proccessing has ended.
+        @param content: The content for which processing has ended.
         @type content: L{Object}
         @return: A new node.
         @rtype: L{Element}
@@ -133,7 +119,7 @@ class Appender:
         Set the value of the I{node} to nill.
         @param node: A I{nil} node.
         @type node: L{Element}
-        @param content: The content for which proccessing has ended.
+        @param content: The content for which processing has ended.
         @type content: L{Object}
         """
         self.marshaller.setnil(node, content)
@@ -143,7 +129,7 @@ class Appender:
         Set the value of the I{node} to a default value.
         @param node: A I{nil} node.
         @type node: L{Element}
-        @param content: The content for which proccessing has ended.
+        @param content: The content for which processing has ended.
         @type content: L{Object}
         @return: The default.
         """
@@ -160,7 +146,7 @@ class Appender:
     def suspend(self, content):
         """
         Notify I{marshaller} that appending this content has suspended.
-        @param content: The content for which proccessing has been suspended.
+        @param content: The content for which processing has been suspended.
         @type content: L{Object}
         """
         self.marshaller.suspend(content)
@@ -168,7 +154,7 @@ class Appender:
     def resume(self, content):
         """
         Notify I{marshaller} that appending this content has resumed.
-        @param content: The content for which proccessing has been resumed.
+        @param content: The content for which processing has been resumed.
         @type content: L{Object}
         """
         self.marshaller.resume(content)
@@ -222,7 +208,7 @@ class PropertyAppender(Appender):
         child = self.node(content)
         child.setText(p.get())
         parent.append(child)
-        for item in p.items():
+        for item in list(p.items()):
             cont = Content(tag=item[0], value=item[1])
             Appender.append(self, child, cont)
 
@@ -254,7 +240,7 @@ class DictAppender(Appender):
             return
         child = self.node(content)
         parent.append(child)
-        for item in d.items():
+        for item in list(d.items()):
             cont = Content(tag=item[0], value=item[1])
             Appender.append(self, child, cont)
 

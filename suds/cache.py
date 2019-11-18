@@ -18,19 +18,21 @@
 Contains basic caching classes.
 """
 
-import os
 import suds
-from tempfile import gettempdir as tmp
+from suds.transport import *
 from suds.sax.parser import Parser
 from suds.sax.element import Element
+
 from datetime import datetime as dt
 from datetime import timedelta
-from logging import getLogger
+import os
+from tempfile import gettempdir as tmp
 try:
-    import cPickle as pickle
-except:
+    import pickle as pickle
+except Exception:
     import pickle
 
+from logging import getLogger
 log = getLogger(__name__)
 
 
@@ -49,16 +51,6 @@ class Cache:
         """
         raise Exception('not-implemented')
 
-    def getf(self, id):
-        """
-        Get a object from the cache by ID.
-        @param id: The object ID.
-        @type id: str
-        @return: The object, else None
-        @rtype: any
-        """
-        raise Exception('not-implemented')
-
     def put(self, id, object):
         """
         Put a object into the cache.
@@ -66,16 +58,6 @@ class Cache:
         @type id: str
         @param object: The object to add.
         @type object: any
-        """
-        raise Exception('not-implemented')
-
-    def putf(self, id, fp):
-        """
-        Write a fp into the cache.
-        @param id: The object ID.
-        @type id: str
-        @param fp: File pointer.
-        @type fp: file-like object.
         """
         raise Exception('not-implemented')
 
@@ -102,13 +84,7 @@ class NoCache(Cache):
     def get(self, id):
         return None
 
-    def getf(self, id):
-        return None
-
     def put(self, id, object):
-        pass
-
-    def putf(self, id, fp):
         pass
 
 
@@ -160,7 +136,7 @@ class FileCache(Cache):
         @type duration: {unit:value}
         """
         if len(duration) == 1:
-            arg = [x[0] for x in duration.items()]
+            arg = list(duration.items())[0]
             if not arg[0] in self.units:
                 raise Exception('must be: %s' % str(self.units))
             self.duration = arg
@@ -181,7 +157,7 @@ class FileCache(Cache):
         try:
             if not os.path.isdir(self.location):
                 os.makedirs(self.location)
-        except:
+        except Exception:
             log.debug(self.location, exc_info=1)
         return self
 
@@ -189,40 +165,31 @@ class FileCache(Cache):
         try:
             fn = self.__fn(id)
             f = self.open(fn, 'wb')
-            f.write(bfr)
-            f.close()
+            try:
+                f.write(bfr)
+            finally:
+                f.close()
             return bfr
-        except:
+        except Exception:
             log.debug(id, exc_info=1)
             return bfr
-
-    def putf(self, id, fp):
-        try:
-            fn = self.__fn(id)
-            f = self.open(fn, 'w')
-            f.write(fp.read())
-            fp.close()
-            f.close()
-            return open(fn)
-        except:
-            log.debug(id, exc_info=1)
-            return fp
 
     def get(self, id):
         try:
             f = self.getf(id)
-            bfr = f.read()
-            f.close()
-            return bfr
-        except:
+            try:
+                return f.read()
+            finally:
+                f.close()
+        except Exception:
             pass
 
     def getf(self, id):
         try:
             fn = self.__fn(id)
             self.validate(fn)
-            return self.open(fn)
-        except:
+            return self.open(fn, 'rb')
+        except Exception:
             pass
 
     def validate(self, fn):
@@ -234,25 +201,26 @@ class FileCache(Cache):
         if self.duration[1] < 1:
             return
         created = dt.fromtimestamp(os.path.getctime(fn))
-        d = {self.duration[0]: self.duration[1]}
-        expired = created+timedelta(**d)
+        d = {self.duration[0]:self.duration[1]}
+        expired = created + timedelta(**d)
         if expired < dt.now():
             log.debug('%s expired, deleted', fn)
             os.remove(fn)
 
     def clear(self):
         for fn in os.listdir(self.location):
-            if os.path.isdir(fn):
+            path = os.path.join(self.location, fn)
+            if os.path.isdir(path):
                 continue
             if fn.startswith(self.fnprefix):
-                log.debug('deleted: %s', fn)
-                os.remove(os.path.join(self.location, fn))
+                os.remove(path)
+                log.debug('deleted: %s', path)
 
     def purge(self, id):
         fn = self.__fn(id)
         try:
             os.remove(fn)
-        except:
+        except Exception:
             pass
 
     def open(self, fn, *args):
@@ -265,13 +233,12 @@ class FileCache(Cache):
     def checkversion(self):
         path = os.path.join(self.location, 'version')
         try:
-
             f = self.open(path)
             version = f.read()
             f.close()
             if version != suds.__version__:
                 raise Exception()
-        except:
+        except Exception:
             self.clear()
             f = self.open(path, 'w')
             f.write(suds.__version__)
@@ -294,17 +261,17 @@ class DocumentCache(FileCache):
 
     def get(self, id):
         try:
-            fp = FileCache.getf(self, id)
+            fp = self.getf(id)
             if fp is None:
                 return None
             p = Parser()
             return p.parse(fp)
-        except:
-            FileCache.purge(self, id)
+        except Exception:
+            self.purge(id)
 
     def put(self, id, object):
         if isinstance(object, Element):
-            FileCache.put(self, id, str(object))
+            FileCache.put(self, id, suds.byte_str(str(object)))
         return object
 
 
@@ -321,13 +288,12 @@ class ObjectCache(FileCache):
 
     def get(self, id):
         try:
-            fp = FileCache.getf(self, id)
+            fp = self.getf(id)
             if fp is None:
                 return None
-            else:
-                return pickle.load(fp)
-        except:
-            FileCache.purge(self, id)
+            return pickle.load(fp)
+        except Exception:
+            self.purge(id)
 
     def put(self, id, object):
         bfr = pickle.dumps(object, self.protocol)

@@ -18,13 +18,14 @@
 Provides I{marshaller} core classes.
 """
 
-from logging import getLogger
+from suds import *
+from suds.mx import *
 from suds.mx.appender import ContentAppender
 from suds.sax.element import Element
 from suds.sax.document import Document
 from suds.sudsobject import Property
 
-
+from logging import getLogger
 log = getLogger(__name__)
 
 
@@ -54,10 +55,8 @@ class Core:
             content.tag = content.value.__class__.__name__
         document = Document()
         if isinstance(content.value, Property):
-            root = self.node(content)  # root is never used?
-            self.append(document, content)
-        else:
-            self.append(document, content)
+            root = self.node(content)
+        self.append(document, content)
         return document.root()
 
     def append(self, parent, content):
@@ -82,7 +81,7 @@ class Core:
     def node(self, content):
         """
         Create and return an XML node.
-        @param content: The content for which proccessing has been suspended.
+        @param content: The content for which processing has been suspended.
         @type content: L{Object}
         @return: An element.
         @rtype: L{Element}
@@ -92,7 +91,7 @@ class Core:
     def start(self, content):
         """
         Appending this content has started.
-        @param content: The content for which proccessing has started.
+        @param content: The content for which processing has started.
         @type content: L{Content}
         @return: True to continue appending
         @rtype: boolean
@@ -102,7 +101,7 @@ class Core:
     def suspend(self, content):
         """
         Appending this content has suspended.
-        @param content: The content for which proccessing has been suspended.
+        @param content: The content for which processing has been suspended.
         @type content: L{Content}
         """
         pass
@@ -110,7 +109,7 @@ class Core:
     def resume(self, content):
         """
         Appending this content has resumed.
-        @param content: The content for which proccessing has been resumed.
+        @param content: The content for which processing has been resumed.
         @type content: L{Content}
         """
         pass
@@ -120,7 +119,7 @@ class Core:
         Appending this content has ended.
         @param parent: The parent node ending.
         @type parent: L{Element}
-        @param content: The content for which proccessing has ended.
+        @param content: The content for which processing has ended.
         @type content: L{Content}
         """
         pass

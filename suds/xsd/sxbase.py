@@ -15,32 +15,29 @@
 # written by: Jeff Ortel ( jortel@redhat.com )
 
 """
-The I{sxbase} module provides I{base} classes that represent
-schema objects.
+The I{sxbase} module provides I{base} classes representing schema objects.
 """
 
-from logging import getLogger
-from suds import objid, Repr
-from suds.compat import unicode
-from suds.xsd import isqref, Filter, qualify
+from suds import *
+from suds.xsd import *
 from suds.sax.element import Element
 from suds.sax import Namespace
 
+from logging import getLogger
 log = getLogger(__name__)
 
 
-class SchemaObject(object):
+class SchemaObject(UnicodeMixin):
     """
-    A schema object is an extension to object object with
-    with schema awareness.
+    A schema object is an extension to object with schema awareness.
     @ivar root: The XML root element.
     @type root: L{Element}
     @ivar schema: The schema containing this object.
     @type schema: L{schema.Schema}
-    @ivar form_qualified: A flag that inidcates that @elementFormDefault
+    @ivar form_qualified: A flag that indicates that @elementFormDefault
         has a value of I{qualified}.
     @type form_qualified: boolean
-    @ivar nillable: A flag that inidcates that @nillable
+    @ivar nillable: A flag that indicates that @nillable
         has a value of I{true}.
     @type nillable: boolean
     @ivar default: The default value.
@@ -52,7 +49,7 @@ class SchemaObject(object):
     @classmethod
     def prepend(cls, d, s, filter=Filter()):
         """
-        Prepend schema object's from B{s}ource list to
+        Prepend schema objects from B{s}ource list to
         the B{d}estination list while applying the filter.
         @param d: The destination list.
         @type d: list
@@ -70,7 +67,7 @@ class SchemaObject(object):
     @classmethod
     def append(cls, d, s, filter=Filter()):
         """
-        Append schema object's from B{s}ource list to
+        Append schema objects from B{s}ource list to
         the B{d}estination list while applying the filter.
         @param d: The destination list.
         @type d: list
@@ -87,7 +84,7 @@ class SchemaObject(object):
         """
         @param schema: The containing schema.
         @type schema: L{schema.Schema}
-        @param root: The xml root node.
+        @param root: The XML root node.
         @type root: L{Element}
         """
         self.schema = schema
@@ -103,7 +100,6 @@ class SchemaObject(object):
         self.nillable = False
         self.default = root.get('default')
         self.rawchildren = []
-        self.cache = {}
 
     def attributes(self, filter=Filter()):
         """
@@ -135,7 +131,7 @@ class SchemaObject(object):
 
     def get_attribute(self, name):
         """
-        Get (find) a I{non-attribute} attribute by name.
+        Get (find) an attribute by name.
         @param name: A attribute name.
         @type name: str
         @return: A tuple: the requested (attribute, ancestry).
@@ -143,8 +139,8 @@ class SchemaObject(object):
         """
         for child, ancestry in self.attributes():
             if child.name == name:
-                return (child, ancestry)
-        return (None, [])
+                return child, ancestry
+        return None, []
 
     def get_child(self, name):
         """
@@ -156,12 +152,12 @@ class SchemaObject(object):
         """
         for child, ancestry in self.children():
             if child.any() or child.name == name:
-                return (child, ancestry)
-        return (None, [])
+                return child, ancestry
+        return None, []
 
     def namespace(self, prefix=None):
         """
-        Get this properties namespace
+        Get this property's namespace.
         @param prefix: The default prefix.
         @type prefix: str
         @return: The schema's target namespace
@@ -175,19 +171,18 @@ class SchemaObject(object):
     def default_namespace(self):
         return self.root.defaultNamespace()
 
-    def unbounded(self):
+    def multi_occurrence(self):
         """
-        Get whether this node is unbounded I{(a collection)}
-        @return: True if unbounded, else False.
+        Get whether the node has multiple occurrences, i.e. is a I{collection}.
+        @return: True if it has, False if it has 1 occurrence at most.
         @rtype: boolean
         """
         max = self.max
         if max is None:
-            max = '1'
+            return False
         if max.isdigit():
-            return (int(max) > 1)
-        else:
-            return max == 'unbounded'
+            return int(max) > 1
+        return max == 'unbounded'
 
     def optional(self):
         """
@@ -195,10 +190,7 @@ class SchemaObject(object):
         @return: True if optional, else False
         @rtype: boolean
         """
-        min = self.min
-        if min is None:
-            min = '1'
-        return min == '0'
+        return self.min == '0'
 
     def required(self):
         """
@@ -210,17 +202,20 @@ class SchemaObject(object):
 
     def resolve(self, nobuiltin=False):
         """
-        Resolve and return the nodes true self.
-        @param nobuiltin: Flag indicates that resolution must
-            not continue to include xsd builtins.
+        Resolve the node's type reference and return the referenced type node.
+
+        Only schema objects that actually support 'having a type' custom
+        implement this interface while others simply resolve as themselves.
+        @param nobuiltin: Flag indicating whether resolving to an external XSD
+            builtin type should not be allowed.
         @return: The resolved (true) type.
         @rtype: L{SchemaObject}
         """
-        return self.cache.get(nobuiltin, self)
+        return self
 
     def sequence(self):
         """
-        Get whether this is an <xs:sequence/>
+        Get whether this is a <xs:sequence/>.
         @return: True if <xs:sequence/>, else False
         @rtype: boolean
         """
@@ -228,7 +223,7 @@ class SchemaObject(object):
 
     def xslist(self):
         """
-        Get whether this is an <xs:list/>
+        Get whether this is a <xs:list/>.
         @return: True if any, else False
         @rtype: boolean
         """
@@ -236,7 +231,7 @@ class SchemaObject(object):
 
     def all(self):
         """
-        Get whether this is an <xs:all/>
+        Get whether this is an <xs:all/>.
         @return: True if any, else False
         @rtype: boolean
         """
@@ -244,7 +239,7 @@ class SchemaObject(object):
 
     def choice(self):
         """
-        Get whether this is n <xs:choice/>
+        Get whether this is a <xs:choice/>.
         @return: True if any, else False
         @rtype: boolean
         """
@@ -252,7 +247,7 @@ class SchemaObject(object):
 
     def any(self):
         """
-        Get whether this is an <xs:any/>
+        Get whether this is an <xs:any/>.
         @return: True if any, else False
         @rtype: boolean
         """
@@ -327,7 +322,7 @@ class SchemaObject(object):
 
     def translate(self, value, topython=True):
         """
-        Translate a value (type) to/from a python type.
+        Translate a value (type) to/from a Python type.
         @param value: A value to translate.
         @return: The converted I{language} type.
         """
@@ -343,11 +338,11 @@ class SchemaObject(object):
 
     def dependencies(self):
         """
-        Get a list of dependancies for dereferencing.
-        @return: A merge dependancy index and a list of dependancies.
+        Get a list of dependencies for dereferencing.
+        @return: A merge dependency index and a list of dependencies.
         @rtype: (int, [L{SchemaObject},...])
         """
-        return (None, [])
+        return None, []
 
     def autoqualified(self):
         """
@@ -361,9 +356,9 @@ class SchemaObject(object):
     def qualify(self):
         """
         Convert attribute values, that are references to other
-        objects, into I{qref}.  Qualfied using default document namespace.
-        Since many wsdls are written improperly: when the document does
-        not define a default namespace, the schema target namespace is used
+        objects, into I{qref}.  Qualified using the default document namespace.
+        Since many WSDLs are written improperly: when the document does
+        not define its default namespace, the schema target namespace is used
         to qualify references.
         """
         defns = self.root.defaultNamespace()
@@ -391,7 +386,7 @@ class SchemaObject(object):
                   'default',
                   'type',
                   'nillable',
-                  'form_qualified',):
+                  'form_qualified'):
             if getattr(self, n) is not None:
                 continue
             v = getattr(other, n)
@@ -401,7 +396,7 @@ class SchemaObject(object):
 
     def content(self, collection=None, filter=Filter(), history=None):
         """
-        Get a I{flattened} list of this nodes contents.
+        Get a I{flattened} list of this node's contents.
         @param collection: A list to fill.
         @type collection: list
         @param filter: A filter used to constrain the result.
@@ -437,9 +432,8 @@ class SchemaObject(object):
         if self in history:
             return '%s ...' % Repr(self)
         history.append(self)
-        tab = '%*s' % (indent * 3, '')
-        result = []
-        result.append('%s<%s' % (tab, self.id))
+        tab = '%*s'%(indent*3, '')
+        result = ['%s<%s' % (tab, self.id)]
         for n in self.description():
             if not hasattr(self, n):
                 continue
@@ -463,16 +457,13 @@ class SchemaObject(object):
     def description(self):
         """
         Get the names used for str() and repr() description.
-        @return:  A dictionary of relavent attributes.
+        @return:  A dictionary of relevant attributes.
         @rtype: [str,...]
         """
         return ()
 
-    def __str__(self):
-        return self.__repr__()
-
     def __unicode__(self):
-         return self.__repr__()
+        return str(self.str())
 
     def __repr__(self):
         s = []
@@ -485,23 +476,27 @@ class SchemaObject(object):
                 continue
             s.append(' %s="%s"' % (n, v))
         s.append(' />')
-        myrep = ''.join(s)
-        return myrep
+        return ''.join(s)
 
     def __len__(self):
         n = 0
-        for x in self:
-            n += 1
+        for x in self: n += 1
         return n
 
     def __iter__(self):
         return Iter(self)
 
     def __getitem__(self, index):
+        """Returns a contained schema object referenced by its 0-based index.
+
+        Returns None if such an object does not exist.
+
+        """
         i = 0
         for c in self:
             if i == index:
                 return c
+            i += 1
 
 
 class Iter:
@@ -525,7 +520,7 @@ class Iter:
             self.items = sx.rawchildren
             self.index = 0
 
-        def next(self):
+        def __next__(self):
             """
             Get the I{next} item in the frame's collection.
             @return: The next item or None
@@ -577,9 +572,6 @@ class Iter:
             raise StopIteration()
 
     def __next__(self):
-        return self.next()
-
-    def next(self):
         """
         Get the next item.
         @return: A tuple: the next (child, ancestry).
@@ -588,15 +580,15 @@ class Iter:
         """
         frame = self.top()
         while True:
-            result = frame.next()
+            result = next(frame)
             if result is None:
                 self.pop()
-                return self.next()
+                return next(self)
             if isinstance(result, Content):
                 ancestry = [f.sx for f in self.stack]
-                return (result, ancestry)
+                return result, ancestry
             self.push(result)
-            return self.next()
+            return next(self)
 
     def __iter__(self):
         return self
@@ -604,7 +596,7 @@ class Iter:
 
 class XBuiltin(SchemaObject):
     """
-    Represents an (xsd) schema <xs:*/> node
+    Represents an (XSD) schema <xs:*/> node.
     """
 
     def __init__(self, schema, name):
@@ -623,9 +615,6 @@ class XBuiltin(SchemaObject):
     def builtin(self):
         return True
 
-    def resolve(self, nobuiltin=False):
-        return self
-
 
 class Content(SchemaObject):
     """
@@ -637,7 +626,7 @@ class Content(SchemaObject):
 
 class NodeFinder:
     """
-    Find nodes based on flexable criteria.  The I{matcher} is
+    Find nodes based on flexable criteria.  The I{matcher}
     may be any object that implements a match(n) method.
     @ivar matcher: An object used as criteria for match.
     @type matcher: I{any}.match(n)

@@ -18,12 +18,11 @@
 Provides soap encoded unmarshaller classes.
 """
 
-from logging import getLogger
-from suds.umx import Content
+from suds import *
+from suds.umx import *
 from suds.umx.typed import Typed
 from suds.sax import Namespace
 
-log = getLogger(__name__)
 
 #
 # Add encoded extensions
@@ -84,7 +83,7 @@ class Encoded(Typed):
             if len(parts) == 2:
                 self.applyaty(content, ref)
             else:
-                pass  # (2) dimensional array
+                pass # (2) dimensional array
         return self
 
     def applyaty(self, content, xty):
@@ -120,7 +119,7 @@ class Encoded(Typed):
         @param content: An array content.
         @type content: L{Content}
         """
-        for n, v in content.data:
+        for n,v in content.data:
             if isinstance(v, list):
                 content.data = v
                 return

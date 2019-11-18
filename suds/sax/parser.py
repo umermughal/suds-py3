@@ -17,7 +17,7 @@
 """
 The sax module contains a collection of classes that provide a
 (D)ocument (O)bject (M)odel representation of an XML document.
-The goal is to provide an easy, intuative interface for managing XML
+The goal is to provide an easy, intuitive interface for managing XML
 documents.  Although, the term, DOM, is used above, this model is
 B{far} better.
 
@@ -26,17 +26,17 @@ containing the prefix and the URI.  Eg: I{('tns', 'http://myns')}
 
 """
 
-from logging import getLogger
-from suds.compat import unicode
-from suds import metrics
+import suds
+from suds import *
+from suds.sax import *
+from suds.sax.attribute import Attribute
 from suds.sax.document import Document
 from suds.sax.element import Element
 from suds.sax.text import Text
-from suds.sax.attribute import Attribute
-from xml.sax import make_parser, ContentHandler, parseString
-from xml.sax.handler import feature_external_ges
 
-log = getLogger(__name__)
+import sys
+from xml.sax import make_parser, InputSource, ContentHandler
+from xml.sax.handler import feature_external_ges
 
 
 class Handler(ContentHandler):
@@ -47,11 +47,11 @@ class Handler(ContentHandler):
 
     def startElement(self, name, attrs):
         top = self.top()
-        node = Element(unicode(name), parent=top)
+        node = Element(str(name))
         for a in attrs.getNames():
-            n = unicode(a)
-            v = unicode(attrs.getValue(a))
-            attribute = Attribute(n, v)
+            n = str(a)
+            v = str(attrs.getValue(a))
+            attribute = Attribute(n,v)
             if self.mapPrefix(node, attribute):
                 continue
             node.append(attribute)
@@ -63,30 +63,29 @@ class Handler(ContentHandler):
         skip = False
         if attribute.name == 'xmlns':
             if len(attribute.value):
-                node.expns = unicode(attribute.value)
+                node.expns = str(attribute.value)
             skip = True
         elif attribute.prefix == 'xmlns':
             prefix = attribute.name
-            node.nsprefixes[prefix] = unicode(attribute.value)
+            node.nsprefixes[prefix] = str(attribute.value)
             skip = True
         return skip
 
     def endElement(self, name):
-        name = unicode(name)
+        name = str(name)
         current = self.top()
         if len(current.charbuffer):
-            current.text = Text(u''.join(current.charbuffer))
+            current.text = Text(''.join(current.charbuffer))
         del current.charbuffer
         if len(current):
             current.trim()
-        currentqname = current.qname()
-        if name == currentqname:
+        if name == current.qname():
             self.pop()
         else:
             raise Exception('malformed document')
 
     def characters(self, content):
-        text = unicode(content)
+        text = str(content)
         node = self.top()
         node.charbuffer.append(text)
 
@@ -120,18 +119,18 @@ class Parser:
         @param string: Parse string XML.
         @type string: str
         """
-        timer = metrics.Timer()
+        timer = suds.metrics.Timer()
         timer.start()
         sax, handler = self.saxparser()
         if file is not None:
             sax.parse(file)
             timer.stop()
-            metrics.log.debug('sax (%s) duration: %s', file, timer)
+            suds.metrics.log.debug('sax (%s) duration: %s', file, timer)
             return handler.nodes[0]
         if string is not None:
-            if isinstance(string, str):
-                string = string.encode()
-            parseString(string, handler)
+            source = InputSource(None)
+            source.setByteStream(suds.BytesIO(string))
+            sax.parse(source)
             timer.stop()
-            metrics.log.debug('%s\nsax duration: %s', string, timer)
+            suds.metrics.log.debug('%s\nsax duration: %s', string, timer)
             return handler.nodes[0]

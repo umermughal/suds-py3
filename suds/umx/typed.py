@@ -18,13 +18,13 @@
 Provides typed unmarshaller classes.
 """
 
-from logging import getLogger
-from suds import TypeNotFound
-from suds.umx import Content
+from suds import *
+from suds.umx import *
 from suds.umx.core import Core
 from suds.resolver import NodeResolver, Frame
 from suds.sudsobject import Factory
 
+from logging import getLogger
 log = getLogger(__name__)
 
 
@@ -95,15 +95,13 @@ class Typed(Core):
     def end(self, content):
         self.resolver.pop()
 
-    def unbounded(self, content):
-        return content.type.unbounded()
+    def multi_occurrence(self, content):
+        return content.type.multi_occurrence()
 
     def nillable(self, content):
         resolved = content.type.resolve()
-        return (
-            content.type.nillable or
-            (resolved.builtin() and resolved.nillable)
-        )
+        return ( content.type.nillable or \
+            (resolved.builtin() and resolved.nillable ) )
 
     def append_attribute(self, name, value, content):
         """
@@ -139,5 +137,4 @@ class Typed(Core):
         if value is not None:
             resolved = type.resolve()
             return resolved.translate(value)
-        else:
-            return value
+        return value

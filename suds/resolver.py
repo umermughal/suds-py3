@@ -19,13 +19,14 @@ The I{resolver} module provides a collection of classes that
 provide wsdl/xsd named type resolution.
 """
 
-import re
-from logging import getLogger
-from suds import Repr
+from suds import *
 from suds.sax import splitPrefix, Namespace
 from suds.sudsobject import Object
-from suds.xsd.query import BlindQuery, qualify
+from suds.xsd.query import BlindQuery, TypeQuery, qualify
 
+import re
+
+from logging import getLogger
 log = getLogger(__name__)
 
 
@@ -69,8 +70,7 @@ class Resolver:
 
 class PathResolver(Resolver):
     """
-    Resolveds the definition object for the schema type located at the
-    specified path.
+    Resolves the definition object for the schema type located at a given path.
     The path may contain (.) dot notation to specify nested types.
     @ivar wsdl: A wsdl object.
     @type wsdl: L{wsdl.Definitions}
@@ -90,8 +90,7 @@ class PathResolver(Resolver):
 
     def find(self, path, resolved=True):
         """
-        Get the definition object for the schema type located at the specified
-        path.
+        Get the definition object for the schema type located at the specified path.
         The path may contain (.) dot notation to specify nested types.
         Actually, the path separator is usually a (.) but can be redefined
         during contruction.
@@ -134,13 +133,12 @@ class PathResolver(Resolver):
         if result is None:
             log.error('(%s) not-found', name)
             raise PathResolver.BadPath(name)
-        else:
-            log.debug('found (%s) as (%s)', name, Repr(result))
+        log.debug('found (%s) as (%s)', name, Repr(result))
         return result
 
     def branch(self, root, parts):
         """
-        Traverse the path until the leaf is reached.
+        Traverse the path until a leaf is reached.
         @param parts: A list of path parts.
         @type parts: [str,..]
         @param root: The root.
@@ -156,9 +154,8 @@ class PathResolver(Resolver):
             if result is None:
                 log.error('(%s) not-found', name)
                 raise PathResolver.BadPath(name)
-            else:
-                result = result.resolve(nobuiltin=True)
-                log.debug('found (%s) as (%s)', name, Repr(result))
+            result = result.resolve(nobuiltin=True)
+            log.debug('found (%s) as (%s)', name, Repr(result))
         return result
 
     def leaf(self, parent, parts):
@@ -188,7 +185,7 @@ class PathResolver(Resolver):
           - fully ns qualified name (eg: {http://myns-uri}Person)
         @param name: The name of an object in the schema.
         @type name: str
-        @return: A qualifed name.
+        @return: A qualified name.
         @rtype: qname
         """
         m = self.altp.match(name)
@@ -201,7 +198,7 @@ class PathResolver(Resolver):
         """
         Split the string on (.) while preserving any (.) inside the
         '{}' alternalte syntax for full ns qualification.
-        @param s: A plain or qualifed name.
+        @param s: A plain or qualified name.
         @type s: str
         @return: A list of the name's parts.
         @rtype: [str,..]
@@ -212,13 +209,12 @@ class PathResolver(Resolver):
             m = self.splitp.match(s, b)
             if m is None:
                 break
-            b, e = m.span()
+            b,e = m.span()
             parts.append(s[b:e])
-            b = e + 1
+            b = e+1
         return parts
 
-    class BadPath(Exception):
-        pass
+    class BadPath(Exception): pass
 
 
 class TreeResolver(Resolver):
@@ -282,8 +278,7 @@ class TreeResolver(Resolver):
             popped = self.stack.pop()
             log.debug('pop: (%s)\n%s', Repr(popped), Repr(self.stack))
             return popped
-        else:
-            log.debug('stack empty, not-popped')
+        log.debug('stack empty, not-popped')
         return None
 
     def depth(self):
@@ -295,12 +290,11 @@ class TreeResolver(Resolver):
         return len(self.stack)
 
     def getchild(self, name, parent):
-        """ get a child by name """
+        """Get a child by name."""
         log.debug('searching parent (%s) for (%s)', Repr(parent), name)
         if name.startswith('@'):
             return parent.get_attribute(name[1:])
-        else:
-            return parent.get_child(name)
+        return parent.get_child(name)
 
 
 class NodeResolver(TreeResolver):
@@ -322,8 +316,8 @@ class NodeResolver(TreeResolver):
         """
         @param node: An xml node to be resolved.
         @type node: L{sax.element.Element}
-        @param resolved: A flag indicating that the fully resolved type should
-            be returned.
+        @param resolved: A flag indicating that the fully resolved type should be
+            returned.
         @type resolved: boolean
         @param push: Indicates that the resolved type should be
             pushed onto the stack.
@@ -342,7 +336,7 @@ class NodeResolver(TreeResolver):
             return result
         if push:
             frame = Frame(result, resolved=known, ancestry=ancestry)
-            self.push(frame)
+            pushed = self.push(frame)
         if resolved:
             result = result.resolve()
         return result
@@ -352,13 +346,13 @@ class NodeResolver(TreeResolver):
         Find an attribute type definition.
         @param name: An attribute name.
         @type name: basestring
-        @param resolved: A flag indicating that the fully resolved type should
-            be returned.
+        @param resolved: A flag indicating that the fully resolved type should be
+            returned.
         @type resolved: boolean
         @return: The found schema I{type}
         @rtype: L{xsd.sxbase.SchemaObject}
         """
-        name = '@%s' % name
+        name = '@%s'%name
         parent = self.top().resolved
         if parent is None:
             result, ancestry = self.query(name, node)
@@ -371,7 +365,7 @@ class NodeResolver(TreeResolver):
         return result
 
     def query(self, name, node):
-        """ blindly query the schema by name """
+        """Blindly query the schema by name."""
         log.debug('searching schema for (%s)', name)
         qref = qualify(name, node, node.namespace())
         query = BlindQuery(qref)
@@ -379,7 +373,7 @@ class NodeResolver(TreeResolver):
         return (result, [])
 
     def known(self, node):
-        """ resolve type referenced by @xsi:type """
+        """Resolve type referenced by @xsi:type."""
         ref = node.get('type', Namespace.xsins)
         if ref is None:
             return None
@@ -430,7 +424,7 @@ class GraphResolver(TreeResolver):
             known = self.known(object)
         if push:
             frame = Frame(result, resolved=known, ancestry=ancestry)
-            self.push(frame)
+            pushed = self.push(frame)
         if resolved:
             if known is None:
                 result = result.resolve()
@@ -439,7 +433,7 @@ class GraphResolver(TreeResolver):
         return result
 
     def query(self, name):
-        """ blindly query the schema by name """
+        """Blindly query the schema by name."""
         log.debug('searching schema for (%s)', name)
         schema = self.schema
         wsdl = self.wsdl()
@@ -452,7 +446,7 @@ class GraphResolver(TreeResolver):
         return (result, [])
 
     def wsdl(self):
-        """ get the wsdl """
+        """Get the wsdl."""
         container = self.schema.container
         if container is None:
             return None
@@ -460,7 +454,7 @@ class GraphResolver(TreeResolver):
             return container.wsdl
 
     def known(self, object):
-        """ get the type specified in the object's metadata """
+        """Get the type specified in the object's metadata."""
         try:
             md = object.__metadata__
             known = md.sxtype
@@ -478,8 +472,8 @@ class Frame:
         self.ancestry = ancestry
 
     def __str__(self):
-        return '%s\n%s\n%s' % (
-            Repr(self.type),
+        return '%s\n%s\n%s' % \
+            (Repr(self.type),
             Repr(self.resolved),
             [Repr(t) for t in self.ancestry])
 

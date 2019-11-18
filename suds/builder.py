@@ -18,12 +18,8 @@
 The I{builder} module provides an wsdl/xsd defined types factory
 """
 
-from logging import getLogger
-from suds import TypeNotFound
-from .compat import basestring
+from suds import *
 from suds.sudsobject import Factory
-
-log = getLogger(__name__)
 
 
 class Builder:
@@ -37,8 +33,8 @@ class Builder:
         self.resolver = resolver
 
     def build(self, name):
-        "build an object for the specified typename as defined in the schema"
-        if isinstance(name, basestring):
+        """ build a an object for the specified typename as defined in the schema """
+        if isinstance(name, str):
             type = self.resolver.find(name)
             if type is None:
                 raise TypeNotFound(name)
@@ -70,7 +66,7 @@ class Builder:
         history.append(type)
         resolved = type.resolve()
         value = None
-        if type.unbounded():
+        if type.multi_occurrence():
             value = []
         else:
             if len(resolved) > 0:
@@ -102,9 +98,11 @@ class Builder:
 
     def skip_child(self, child, ancestry):
         """ get whether or not to skip the specified child """
-        if child.any():
-            return True
-        return any(x.choice() for x in ancestry)
+        if child.any(): return True
+        for x in ancestry:
+            if x.choice():
+                return True
+        return False
 
     def ordering(self, type):
         """ get the ordering """

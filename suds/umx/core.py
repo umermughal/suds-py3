@@ -18,20 +18,14 @@
 Provides base classes for XML->object I{unmarshalling}.
 """
 
-from logging import getLogger
-from suds.compat import basestring
-from suds.umx import Content
+from suds import *
+from suds.umx import *
 from suds.umx.attrlist import AttrList
 from suds.sax.text import Text
 from suds.sudsobject import Factory, merge
 
 
-log = getLogger(__name__)
-
-reserved = {
-    'class': 'cls',
-    'def': 'dfn',
-}
+reserved = {'class':'cls', 'def':'dfn'}
 
 
 class Core:
@@ -72,13 +66,11 @@ class Core:
     def postprocess(self, content):
         """
         Perform final processing of the resulting data structure as follows:
-          - Mixed values (children and text) will have a result of the
-             I{content.node}.
-          - Semi-simple values (attributes, no-children and text) will have a
-             result of a property object.
-          - Simple values (no-attributes, no-children with text nodes) will
-             have a string result equal to the value of the
-             content.node.getText().
+          - Mixed values (children and text) will have a result of the I{content.node}.
+          - Simi-simple values (attributes, no-children and text) will have a result of a
+             property object.
+          - Simple values (no-attributes, no-children with text nodes) will have a string
+             result equal to the value of the content.node.getText().
         @param content: The current content being unmarshalled.
         @type content: L{Content}
         @return: The post-processed result.
@@ -88,11 +80,9 @@ class Core:
         if len(node.children) and node.hasText():
             return node
         attributes = AttrList(node.attributes)
-        if (
-            attributes.rlen() and
-            not len(node.children) and
-            node.hasText()
-        ):
+        if attributes.rlen() and \
+            not len(node.children) and \
+            node.hasText():
                 p = Factory.property(node.name, node.getText())
                 return merge(content.data, p)
         if len(content.data):
@@ -105,7 +95,7 @@ class Core:
                 return None
             else:
                 return Text('', lang=lang)
-        if isinstance(content.text, basestring):
+        if isinstance(content.text, str):
             return Text(content.text, lang=lang)
         else:
             return content.text
@@ -154,11 +144,11 @@ class Core:
                 else:
                     setattr(content.data, key, [v, cval])
                 continue
-            if self.unbounded(cont):
+            if self.multi_occurrence(cont):
                 if cval is None:
                     setattr(content.data, key, [])
                 else:
-                    setattr(content.data, key, [cval, ])
+                    setattr(content.data, key, [cval,])
             else:
                 setattr(content.data, key, cval)
 
@@ -193,22 +183,22 @@ class Core:
         """
         pass
 
-    def bounded(self, content):
+    def single_occurrence(self, content):
         """
-        Get whether the content is bounded (not a list).
+        Get whether the content has at most a single occurrence (not a list).
         @param content: The current content being unmarshalled.
         @type content: L{Content}
-        @return: True if bounded, else False
+        @return: True if content has at most a single occurrence, else False.
         @rtype: boolean
         '"""
-        return not self.unbounded(content)
+        return not self.multi_occurrence(content)
 
-    def unbounded(self, content):
+    def multi_occurrence(self, content):
         """
-        Get whether the object is unbounded (a list).
+        Get whether the content has more than one occurrence (a list).
         @param content: The current content being unmarshalled.
         @type content: L{Content}
-        @return: True if unbounded, else False
+        @return: True if content has more than one occurrence, else False.
         @rtype: boolean
         '"""
         return False

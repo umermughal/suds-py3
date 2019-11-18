@@ -20,15 +20,11 @@ The service proxy provides access to web services.
 Replaced by: L{client.Client}
 """
 
-from logging import getLogger
-
-from .client import Client
-from .compat import unicode
-from .utils import is_builtin
-log = getLogger(__name__)
+from suds import *
+from suds.client import Client
 
 
-class ServiceProxy(object):
+class ServiceProxy(UnicodeMixin):
 
     """
     A lightweight soap based web service proxy.
@@ -44,8 +40,7 @@ class ServiceProxy(object):
         @type url: str
         @param kwargs: keyword arguments.
         @keyword faults: Raise faults raised by server (default:True),
-                         else return tuple from service method invocation as
-                         (http code, object).
+                else return tuple from service method invocation as (http code, object).
         @type faults: boolean
         @keyword proxy: An http proxy to be specified on requests (default:{}).
                            The proxy is defined as {protocol:proxy,}
@@ -74,14 +69,12 @@ class ServiceProxy(object):
         """
         return self.__client__.factory.create(name)
 
-    def __str__(self):
-        return str(self.__client__)
-
     def __unicode__(self):
         return str(self.__client__)
 
     def __getattr__(self, name):
-        if is_builtin(name):
+        builtin = name.startswith('__') and name.endswith('__')
+        if builtin:
             return self.__dict__[name]
         else:
             return getattr(self.__client__.service, name)

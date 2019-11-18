@@ -18,15 +18,12 @@
 Provides XML I{attribute} classes.
 """
 
-from logging import getLogger
-from suds.sax import Namespace, splitPrefix
+from suds import *
+from suds.sax import *
 from suds.sax.text import Text
-from suds.compat import unicode
-
-log = getLogger(__name__)
 
 
-class Attribute:
+class Attribute(UnicodeMixin):
     """
     An XML attribute object.
     @ivar parent: The node containing this attribute
@@ -107,7 +104,7 @@ class Attribute:
         @return: True when has I{text}.
         @rtype: boolean
         """
-        return self.value is not None and len(self.value)
+        return ( self.value is not None and len(self.value) )
 
     def namespace(self):
         """
@@ -147,12 +144,12 @@ class Attribute:
         if name is None:
             byname = True
         else:
-            byname = self.name == name
+            byname = ( self.name == name )
         if ns is None:
             byns = True
         else:
-            byns = self.namespace()[1] == ns[1]
-        return byname and byns
+            byns = ( self.namespace()[1] == ns[1] )
+        return ( byname and byns )
 
     def __eq__(self, rhs):
         """ equals operator """
@@ -163,19 +160,9 @@ class Attribute:
 
     def __repr__(self):
         """ get a string representation """
-        return 'attr (prefix=%s, name=%s, value=(%s))' % (
-            self.prefix,
-            self.name,
-            self.value)
-
-    def __str__(self):
-        """ get an xml string representation """
-        n = self.qname()
-        if self.hasText():
-            v = self.value.escape()
-        else:
-            v = self.value
-        return u'%s="%s"' % (n, v)
+        return \
+            'attr (prefix=%s, name=%s, value=(%s))' %\
+                (self.prefix, self.name, self.value)
 
     def __unicode__(self):
         """ get an xml string representation """
@@ -184,4 +171,4 @@ class Attribute:
             v = self.value.escape()
         else:
             v = self.value
-        return u'%s="%s"' % (n, v)
+        return '%s="%s"' % (n, v)

@@ -20,31 +20,35 @@ See I{README.txt}
 """
 
 import suds
-import suds.metrics as metrics
-from http.cookiejar import CookieJar
-from suds import (TypeNotFound, BuildError, ServiceNotFound, PortNotFound,
-                  MethodNotFound, WebFault)
-from suds.reader import DefinitionsReader
-from suds.transport import TransportError, Request
-from suds.transport.http import HttpAuthenticated
-from suds.servicedefinition import ServiceDefinition
-from suds import sudsobject
-from .sudsobject import Factory as InstFactory
-from suds.resolver import PathResolver
+from suds import *
+import suds.bindings.binding
 from suds.builder import Builder
-from suds.wsdl import Definitions
 from suds.cache import ObjectCache
-from suds.sax.parser import Parser
+import suds.metrics as metrics
 from suds.options import Options
-from suds.properties import Unskin
-from copy import deepcopy
 from suds.plugin import PluginContainer
-from logging import getLogger
+from suds.properties import Unskin
+from suds.reader import DefinitionsReader
+from suds.resolver import PathResolver
+from suds.sax.document import Document
+from suds.sax.parser import Parser
+from suds.servicedefinition import ServiceDefinition
+from suds.transport import TransportError, Request
+from suds.transport.https import HttpAuthenticated
+from suds.umx.basic import Basic as UmxBasic
+from suds.wsdl import Definitions
+from . import sudsobject
 
+from http.cookiejar import CookieJar
+from copy import deepcopy
+import http.client
+from urllib.parse import urlparse
+
+from logging import getLogger
 log = getLogger(__name__)
 
 
-class Client(object):
+class Client(UnicodeMixin):
     """
     A lightweight web services client.
     I{(2nd generation)} API.
@@ -104,7 +108,8 @@ class Client(object):
         options = Options()
         options.transport = HttpAuthenticated()
         self.options = options
-        options.cache = ObjectCache(days=1)
+        if "cache" not in kwargs:
+            kwargs["cache"] = ObjectCache(days=1)
         self.set_options(**kwargs)
         reader = DefinitionsReader(options, Definitions)
         self.wsdl = reader.open(url)
@@ -131,7 +136,7 @@ class Client(object):
         """
         Add I{static} mapping of an XML namespace prefix to a namespace.
         This is useful for cases when a wsdl and referenced schemas make heavy
-        use of namespaces and those namespaces are subject to changed.
+        use of namespaces and those namespaces are subject to change.
         @param prefix: An XML namespace prefix.
         @type prefix: str
         @param uri: An XML namespace URI.
@@ -145,22 +150,6 @@ class Client(object):
             return
         if mapped[1] != uri:
             raise Exception('"%s" already mapped as "%s"' % (prefix, mapped))
-
-    def last_sent(self):
-        """
-        Get last sent I{soap} message.
-        @return: The last sent I{soap} message.
-        @rtype: L{Document}
-        """
-        return self.messages.get('tx')
-
-    def last_received(self):
-        """
-        Get last received I{soap} message.
-        @return: The last received I{soap} message.
-        @rtype: L{Document}
-        """
-        return self.messages.get('rx')
 
     def clone(self):
         """
@@ -185,35 +174,14 @@ class Client(object):
         clone.messages = dict(tx=None, rx=None)
         return clone
 
-    def __str__(self):
-        s = ['\n']
-        build = suds.__build__.split()
-        s.append('Suds ( https://github.com/cackharot/suds-py3 )')
-        s.append('  version: %s' % suds.__version__)
-        s.append(' %s  build: %s' % (build[0], build[1]))
-        for sd in self.sd:
-            s.append('\n\n%s' % sd)
-        return ''.join(s)
-
     def __unicode__(self):
         s = ['\n']
-        build = suds.__build__.split()
-        s.append('Suds ( https://github.com/cackharot/suds-py3 )')
+        s.append('Suds ( https://fedorahosted.org/suds/ )')
         s.append('  version: %s' % suds.__version__)
-        s.append(' %s  build: %s' % (build[0], build[1]))
+        if ( suds.__build__ ):
+            s.append('  build: %s' % suds.__build__)
         for sd in self.sd:
-            s.append('\n\n%s' % sd)
-        return ''.join(s)
-
-    def html(self):
-        s = ['']
-        build = suds.__build__.split()
-        s.append('<h1>Suds <small>(')
-        s.append('  version: %s' % suds.__version__)
-        s.append(' %s  build: %s' % (build[0], build[1]))
-        s.append(')</small></h1>')
-        for sd in self.sd:
-            s.append('<hr/>%s' % sd.html())
+            s.append('\n\n%s' % str(sd))
         return ''.join(s)
 
 
@@ -249,7 +217,7 @@ class Factory:
         if type is None:
             raise TypeNotFound(name)
         if type.enum():
-            result = InstFactory.object(name)
+            result = sudsobject.Factory.object(name)
             for e, a in type.children():
                 setattr(result, e.name, e.name)
         else:
@@ -549,13 +517,12 @@ class Method:
         """
         clientclass = self.clientclass(kwargs)
         client = clientclass(self.client, self.method)
-        if not self.faults():
-            try:
-                return client.invoke(args, kwargs)
-            except WebFault as e:
-                return (500, e)
-        else:
+        try:
             return client.invoke(args, kwargs)
+        except WebFault as e:
+            if self.faults():
+                raise
+            return (http.client.INTERNAL_SERVER_ERROR, e)
 
     def faults(self):
         """ get faults option """
@@ -565,8 +532,7 @@ class Method:
         """ get soap client class """
         if SimClient.simulation(kwargs):
             return SimClient
-        else:
-            return SoapClient
+        return SoapClient
 
 
 class SoapClient:
@@ -606,19 +572,15 @@ class SoapClient:
         """
         timer = metrics.Timer()
         timer.start()
-        result = None
         binding = self.method.binding.input
         soapenv = binding.get_message(self.method, args, kwargs)
         timer.stop()
-        metrics.log.debug("message for '%s' created: %s",
-                          self.method.name,
-                          timer)
+        metrics.log.debug("message for '%s' created: %s", self.method.name,
+            timer)
         timer.start()
         result = self.send(soapenv)
         timer.stop()
-        metrics.log.debug("method '%s' invoked: %s",
-                          self.method.name,
-                          timer)
+        metrics.log.debug("method '%s' invoked: %s", self.method.name, timer)
         return result
 
     def send(self, soapenv):
@@ -629,122 +591,145 @@ class SoapClient:
         @return: The reply to the sent message.
         @rtype: I{builtin} or I{subclass of} L{Object}
         """
-        result = None
         location = self.location()
-        binding = self.method.binding.input
-        transport = self.options.transport
-        retxml = self.options.retxml
-        prettyxml = self.options.prettyxml
         log.debug('sending to (%s)\nmessage:\n%s', location, soapenv)
+        original_soapenv = soapenv
+        plugins = PluginContainer(self.options.plugins)
+        plugins.message.marshalled(envelope=soapenv.root())
+        if self.options.prettyxml:
+            soapenv = soapenv.str()
+        else:
+            soapenv = soapenv.plain()
+        soapenv = soapenv.encode('utf-8')
+        ctx = plugins.message.sending(envelope=soapenv)
+        soapenv = ctx.envelope
+        if self.options.nosend:
+            return RequestContext(self, soapenv, original_soapenv)
+        request = Request(location, soapenv)
+        request.headers = self.headers()
         try:
-            self.last_sent(soapenv)
-            plugins = PluginContainer(self.options.plugins)
-            plugins.message.marshalled(envelope=soapenv.root())
-            if prettyxml:
-                soapenv = soapenv.str()
-            else:
-                soapenv = soapenv.plain()
-            soapenv = soapenv.encode('utf-8')
-            plugins.message.sending(envelope=soapenv)
-            request = Request(location, soapenv)
-            request.headers = self.headers()
-            reply = transport.send(request)
-            ctx = plugins.message.received(reply=reply.message)
-            reply.message = ctx.reply
-            if retxml:
-                result = reply.message
-            else:
-                result = self.succeeded(binding, reply.message)
+            timer = metrics.Timer()
+            timer.start()
+            reply = self.options.transport.send(request)
+            timer.stop()
+            metrics.log.debug('waited %s on server reply', timer)
         except TransportError as e:
-            if e.httpcode in (202, 204):
-                result = None
+            content = e.fp and e.fp.read() or ''
+            return self.process_reply(reply=content, status=e.httpcode,
+                description=tostr(e), original_soapenv=original_soapenv)
+        return self.process_reply(reply=reply.message,
+            original_soapenv=original_soapenv)
+
+    def process_reply(self, reply, status=None, description=None,
+        original_soapenv=None):
+        if status is None:
+            status = http.client.OK
+        if status in (http.client.ACCEPTED, http.client.NO_CONTENT):
+            return
+        failed = True
+        try:
+            if status == http.client.OK:
+                log.debug('HTTP succeeded:\n%s', reply)
             else:
-                log.error(self.last_sent())
-                result = self.failed(binding, e)
-        return result
+                log.debug('HTTP failed - %d - %s:\n%s', status, description,
+                    reply)
+
+            # (todo)
+            #   Consider whether and how to allow plugins to handle error,
+            # httplib.ACCEPTED & httplib.NO_CONTENT replies as well as
+            # successful ones.
+            #                                 (todo) (27.03.2013.) (Jurko)
+            plugins = PluginContainer(self.options.plugins)
+            ctx = plugins.message.received(reply=reply)
+            reply = ctx.reply
+
+            # SOAP standard states that SOAP errors must be accompanied by HTTP
+            # status code 500 - internal server error:
+            #
+            # From SOAP 1.1 Specification:
+            #   In case of a SOAP error while processing the request, the SOAP
+            # HTTP server MUST issue an HTTP 500 "Internal Server Error"
+            # response and include a SOAP message in the response containing a
+            # SOAP Fault element (see section 4.4) indicating the SOAP
+            # processing error.
+            #
+            # From WS-I Basic profile:
+            #   An INSTANCE MUST use a "500 Internal Server Error" HTTP status
+            # code if the response message is a SOAP Fault.
+            replyroot = None
+            if status in (http.client.OK, http.client.INTERNAL_SERVER_ERROR):
+                replyroot = _parse(reply)
+                plugins.message.parsed(reply=replyroot)
+                fault = self.get_fault(replyroot)
+                if fault:
+                    if status != http.client.INTERNAL_SERVER_ERROR:
+                        log.warn("Web service reported a SOAP processing "
+                            "fault using an unexpected HTTP status code %d. "
+                            "Reporting as an internal server error.", status)
+                    if self.options.faults:
+                        raise WebFault(fault, replyroot)
+                    return (http.client.INTERNAL_SERVER_ERROR, fault)
+            if status != http.client.OK:
+                if self.options.faults:
+                    # (todo)
+                    #   Use a more specific exception class here.
+                    #                         (27.03.2013.) (Jurko)
+                    raise Exception((status, description))
+                return (status, description)
+
+            if self.options.retxml:
+                failed = False
+                return reply
+
+            result = replyroot and self.method.binding.output.get_reply(
+                self.method, replyroot)
+            ctx = plugins.message.unmarshalled(reply=result)
+            result = ctx.reply
+            failed = False
+            if self.options.faults:
+                return result
+            return (http.client.OK, result)
+        finally:
+            if failed and original_soapenv:
+                log.error(original_soapenv)
+
+    def get_fault(self, replyroot):
+        """Extract fault information from the specified SOAP reply.
+
+          Returns an I{unmarshalled} fault L{Object} or None in case the given
+        XML document does not contain the SOAP <Fault> element.
+
+        @param replyroot: A SOAP reply message root XML element or None.
+        @type replyroot: L{Element}
+        @return: A fault object.
+        @rtype: L{Object}
+        """
+        envns = suds.bindings.binding.envns
+        soapenv = replyroot and replyroot.getChild('Envelope', envns)
+        soapbody = soapenv and soapenv.getChild('Body', envns)
+        fault = soapbody and soapbody.getChild('Fault', envns)
+        return fault is not None and UmxBasic().process(fault)
 
     def headers(self):
         """
-        Get http headers or the http/https request.
+        Get HTTP headers or the HTTP/HTTPS request.
         @return: A dictionary of header/values.
         @rtype: dict
         """
         action = self.method.soap.action
-        result = {
-            'Content-Type': 'text/xml; charset=utf-8',
-            'SOAPAction': action
-        }
-        result.update(self.options.headers)
+        if isinstance(action, str):
+            action = action.encode('utf-8')
+        stock = {'Content-Type':'text/xml; charset=utf-8', 'SOAPAction':action}
+        result = dict(stock, **self.options.headers)
         log.debug('headers = %s', result)
         return result
 
-    def succeeded(self, binding, reply):
-        """
-        Request succeeded, process the reply
-        @param binding: The binding to be used to process the reply.
-        @type binding: L{bindings.binding.Binding}
-        @param reply: The raw reply text.
-        @type reply: str
-        @return: The method result.
-        @rtype: I{builtin}, L{Object}
-        @raise WebFault: On server.
-        """
-        log.debug('http succeeded:\n%s', reply)
-        plugins = PluginContainer(self.options.plugins)
-        if len(reply) > 0:
-            reply, result = binding.get_reply(self.method, reply)
-            self.last_received(reply)
-        else:
-            result = None
-        ctx = plugins.message.unmarshalled(reply=result)
-        result = ctx.reply
-        if self.options.faults:
-            return result
-        else:
-            return (200, result)
-
-    def failed(self, binding, error):
-        """
-        Request failed, process reply based on reason
-        @param binding: The binding to be used to process the reply.
-        @type binding: L{suds.bindings.binding.Binding}
-        @param error: The http error message
-        @type error: L{transport.TransportError}
-        """
-        status, reason = (error.httpcode, suds.tostr(error))
-        reply = error.fp.read()
-        log.debug('http failed:\n%s', reply)
-        if status == 500:
-            if len(reply) > 0:
-                r, p = binding.get_fault(reply)
-                self.last_received(r)
-                return (status, p)
-            else:
-                return (status, None)
-        if self.options.faults:
-            raise Exception((status, reason))
-        else:
-            return (status, None)
-
     def location(self):
-        p = Unskin(self.options)
-        return p.get('location', self.method.location.decode('utf-8'))
+        """
+        Returns the SOAP request's target location URL.
 
-    def last_sent(self, d=None):
-        key = 'tx'
-        messages = self.client.messages
-        if d is None:
-            return messages.get(key)
-        else:
-            messages[key] = d
-
-    def last_received(self, d=None):
-        key = 'rx'
-        messages = self.client.messages
-        if d is None:
-            return messages.get(key)
-        else:
-            messages[key] = d
+        """
+        return Unskin(self.options).get('location', self.method.location)
 
 
 class SimClient(SoapClient):
@@ -757,7 +742,7 @@ class SimClient(SoapClient):
     @classmethod
     def simulation(cls, kwargs):
         """ get whether loopback has been specified in the I{kwargs}. """
-        return SimClient.injkey in kwargs.keys()
+        return SimClient.injkey in kwargs
 
     def invoke(self, args, kwargs):
         """
@@ -771,32 +756,77 @@ class SimClient(SoapClient):
         """
         simulation = kwargs[self.injkey]
         msg = simulation.get('msg')
-        reply = simulation.get('reply')
-        fault = simulation.get('fault')
-        if msg is None:
-            if reply is not None:
-                return self.__reply(reply, args, kwargs)
-            if fault is not None:
-                return self.__fault(fault)
-            raise Exception('(reply|fault) expected when msg=None')
-        sax = Parser()
-        msg = sax.parse(string=msg)
-        return self.send(msg)
-
-    def __reply(self, reply, args, kwargs):
-        """ simulate the reply """
-        binding = self.method.binding.input
-        msg = binding.get_message(self.method, args, kwargs)
+        if msg is not None:
+            assert msg.__class__ is suds.byte_str_class
+            return self.send(_parse(msg))
+        msg = self.method.binding.input.get_message(self.method, args, kwargs)
         log.debug('inject (simulated) send message:\n%s', msg)
-        binding = self.method.binding.output
-        return self.succeeded(binding, reply)
+        reply = simulation.get('reply')
+        if reply is not None:
+            assert reply.__class__ is suds.byte_str_class
+            status = simulation.get('status')
+            description=simulation.get('description')
+            if description is None:
+                description = 'injected reply'
+            return self.process_reply(reply=reply, status=status,
+                description=description, original_soapenv=msg)
+        raise Exception('reply or msg injection parameter expected');
 
-    def __fault(self, reply):
-        """ simulate the (fault) reply """
-        binding = self.method.binding.output
-        if self.options.faults:
-            r, p = binding.get_fault(reply)
-            self.last_received(r)
-            return (500, p)
-        else:
-            return (500, None)
+
+class RequestContext:
+    """
+    A request context.
+    Returned when the ''nosend'' options is specified. Allows the caller to
+    take care of sending the request himself and simply return the reply data
+    for further processing.
+    @ivar client: The suds client.
+    @type client: L{Client}
+    @ivar envelope: The request SOAP envelope.
+    @type envelope: str
+    @ivar original_envelope: The original request SOAP envelope before plugin
+                             processing.
+    @type original_envelope: str
+    """
+
+    def __init__(self, client, envelope, original_envelope):
+        """
+        @param client: The suds client.
+        @type client: L{Client}
+        @param envelope: The request SOAP envelope.
+        @type envelope: str
+        @param original_envelope: The original request SOAP envelope before
+                                  plugin processing.
+        @type original_envelope: str
+        """
+        self.client = client
+        self.envelope = envelope
+        self.original_envelope = original_envelope
+
+    def process_reply(self, reply, status=None, description=None):
+        """
+        Re-entry for processing a successful reply.
+        @param reply: The reply SOAP envelope.
+        @type reply: str
+        @param status: The HTTP status code
+        @type status: int
+        @param description: Additional status description.
+        @type description: str
+        @return: The returned value for the invoked method.
+        @return: The result of the method invocation.
+        @rtype: I{builtin}|I{subclass of} L{Object}
+        """
+        return self.client.process_reply(reply=reply, status=status,
+            description=description, original_soapenv=self.original_envelope)
+
+
+def _parse(string):
+    """
+    Parses the given XML document content and returns the resulting root XML
+    element node. Returns None if the given XML content is empty.
+    @param string: XML document content to parse.
+    @type string: str
+    @return: Resulting root XML element node or None.
+    @rtype: L{Element}
+    """
+    if len(string) > 0:
+        return Parser().parse(string=string)
