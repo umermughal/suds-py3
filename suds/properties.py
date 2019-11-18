@@ -18,11 +18,6 @@
 Properties classes.
 """
 
-from logging import getLogger
-from .utils import is_builtin
-
-log = getLogger(__name__)
-
 
 class AutoLinker(object):
     """
@@ -81,8 +76,8 @@ class Link(object):
         for d in dB:
             if d in dA:
                 raise Exception('Duplicate domain "%s" found' % d)
-        kA = pA.keys()
-        kB = pB.keys()
+        kA = list(pA.keys())
+        kB = list(pB.keys())
         for k in kA:
             if k in kB:
                 raise Exception('Duplicate key %s found' % k)
@@ -122,7 +117,7 @@ class Endpoint(object):
         return self.link.teardown()
 
     def __eq__(self, rhs):
-        return self.target == rhs
+        return ( self.target == rhs )
 
     def __hash__(self):
         return hash(self.target)
@@ -179,9 +174,11 @@ class Definition:
         """
         if value is None:
             return
-        if len(self.classes) and not isinstance(value, self.classes):
-            msg = '"%s" must be: %s' % (self.name, self.classes)
-            raise AttributeError(msg)
+        if len(self.classes) and \
+            not isinstance(value, self.classes):
+                msg = '"%s" must be: %s' % (self.name, self.classes)
+                raise AttributeError(msg)
+
 
     def __repr__(self):
         return '%s: %s' % (self.name, str(self))
@@ -254,7 +251,7 @@ class Properties:
         """
         if isinstance(other, Properties):
             other = other.defined
-        for n, v in other.items():
+        for n,v in list(other.items()):
             self.set(n, v)
         return self
 
@@ -375,7 +372,7 @@ class Properties:
             history = []
         history.append(self)
         keys = set()
-        keys.update(self.definitions.keys())
+        keys.update(list(self.definitions.keys()))
         for x in self.links:
             if x in history:
                 continue
@@ -411,7 +408,7 @@ class Properties:
         @return: self
         @rtype: L{Properties}
         """
-        for d in self.definitions.values():
+        for d in list(self.definitions.values()):
             self.defined[d.name] = d.default
         return self
 
@@ -437,10 +434,10 @@ class Properties:
     def str(self, history):
         s = []
         s.append('Definitions:')
-        for d in self.definitions.values():
+        for d in list(self.definitions.values()):
             s.append('\t%s' % repr(d))
         s.append('Content:')
-        for d in self.defined.items():
+        for d in list(self.defined.items()):
             s.append('\t%s' % str(d))
         if self not in history:
             history.append(self)
@@ -467,7 +464,8 @@ class Skin(object):
         self.__pts__ = Properties(domain, definitions, kwargs)
 
     def __setattr__(self, name, value):
-        if is_builtin(name):
+        builtin = name.startswith('__') and name.endswith('__')
+        if builtin:
             self.__dict__[name] = value
             return
         self.__pts__.set(name, value)

@@ -15,21 +15,17 @@
 # written by: Jeff Ortel ( jortel@redhat.com )
 
 """
-Contains XML text for documents to be distributed
-with the suds lib.  Also, contains classes for accessing
-these documents.
+Support for holding XML document texts that may then be accessed internally by
+suds without having to download them from an external source. Also contains XML
+document content to be distributed alongside the suds library.
+
 """
 
-from io import StringIO
-from logging import getLogger
-
-log = getLogger(__name__)
+import suds
 
 
-#
-# Soap section 5 encoding schema.
-#
-encoding = """<?xml version="1.0" encoding="UTF-8"?>
+soap5_encoding_schema = suds.byte_str("""\
+<?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     xmlns:tns="http://schemas.xmlsoap.org/soap/encoding/"
     targetNamespace="http://schemas.xmlsoap.org/soap/encoding/">
@@ -148,8 +144,6 @@ encoding = """<?xml version="1.0" encoding="UTF-8"?>
     </xs:simpleContent>
   </xs:complexType>
 
-
-
   <xs:element name="NOTATION" type="tns:NOTATION"/>
   <xs:complexType name="NOTATION">
     <xs:simpleContent>
@@ -158,7 +152,6 @@ encoding = """<?xml version="1.0" encoding="UTF-8"?>
       </xs:extension>
     </xs:simpleContent>
   </xs:complexType>
-
 
   <xs:element name="time" type="tns:time"/>
   <xs:complexType name="time">
@@ -285,7 +278,6 @@ encoding = """<?xml version="1.0" encoding="UTF-8"?>
       </xs:extension>
     </xs:simpleContent>
   </xs:complexType>
-
 
   <xs:element name="string" type="tns:string"/>
   <xs:complexType name="string">
@@ -532,57 +524,64 @@ encoding = """<?xml version="1.0" encoding="UTF-8"?>
 
   <xs:element name="anyType"/>
 </xs:schema>
-"""
+""")
 
 
 class DocumentStore:
     """
-    The I{suds} document store provides a local repository
-    for xml documnts.
+    The I{suds} document store provides a local repository for XML documents.
+
     @cvar protocol: The URL protocol for the store.
     @type protocol: str
     @cvar store: The mapping of URL location to documents.
     @type store: dict
     """
 
-    protocol = 'suds'
+    def __init__(self, *args, **kwargs):
+        self.__store = {
+            'schemas.xmlsoap.org/soap/encoding/':soap5_encoding_schema}
+        self.update = self.__store.update
+        self.update(*args, **kwargs)
 
-    store = {
-        'schemas.xmlsoap.org/soap/encoding/': encoding
-    }
+    def __len__(self):
+        # Implementation note:
+        #   We can not implement '__len__' as simply self.__store.__len__, as
+        # we do for 'update' because that causes py2to3 conversion to fail.
+        #                                            (08.05.2013.) (Jurko)
+        return len(self.__store)
 
     def open(self, url):
         """
-        Open a document at the specified url.
+        Open a document at the specified URL.
+
+        Missing documents referenced using the internal 'suds' protocol are
+        reported by raising an exception. For other protocols, None is returned
+        instead.
+
         @param url: A document URL.
         @type url: str
-        @return: A file pointer to the document.
-        @rtype: StringIO
+        @return: Document content or None if not found.
+        @rtype: bytes
         """
-        protocol, location = self.split(url)
-        if protocol == self.protocol:
-            return self.find(location)
-        else:
-            return None
+        protocol, location = self.__split(url)
+        content = self.__find(location)
+        if protocol == 'suds' and content is None:
+            raise Exception('location "%s" not in document store' % location)
+        return content
 
-    def find(self, location):
+    def __find(self, location):
         """
         Find the specified location in the store.
         @param location: The I{location} part of a URL.
         @type location: str
-        @return: An input stream to the document.
-        @rtype: StringIO
+        @return: Document content or None if not found.
+        @rtype: bytes
         """
-        try:
-            content = self.store[location]
-            return StringIO(content)
-        except:
-            reason = 'location "%s" not in document store' % location
-            raise Exception(reason)
+        return self.__store.get(location)
 
-    def split(self, url):
+    def __split(self, url):
         """
-        Split the url into I{protocol} and I{location}
+        Split the URL into I{protocol} and I{location}
         @param url: A URL.
         @param url: str
         @return: (I{url}, I{location})
@@ -591,5 +590,7 @@ class DocumentStore:
         parts = url.split('://', 1)
         if len(parts) == 2:
             return parts
-        else:
-            return (None, url)
+        return None, url
+
+
+defaultDocumentStore = DocumentStore()

@@ -20,12 +20,9 @@ that are primarily used for the highly dynamic interactions with
 wsdl/xsd defined types.
 """
 
+from suds import *
+
 from logging import getLogger
-
-from . import tostr
-from .compat import basestring
-from .utils import is_builtin
-
 log = getLogger(__name__)
 
 
@@ -53,7 +50,6 @@ def asdict(sobject):
     """
     return dict(items(sobject))
 
-
 def merge(a, b):
     """
     Merge all attributes and metadata from I{a} to I{b}.
@@ -67,12 +63,10 @@ def merge(a, b):
         b.__metadata__ = b.__metadata__
     return b
 
-
 def footprint(sobject):
     """
     Get the I{virtual footprint} of the object.
-    This is really a count of the attributes in the branch with a significant
-    value.
+    This is really a count of the attributes in the branch with a significant value.
     @param sobject: A suds object.
     @type sobject: L{Object}
     @return: The branch footprint.
@@ -81,16 +75,14 @@ def footprint(sobject):
     n = 0
     for a in sobject.__keylist__:
         v = getattr(sobject, a)
-        if v is None:
-            continue
+        if v is None: continue
         if isinstance(v, Object):
             n += footprint(v)
             continue
         if hasattr(v, '__len__'):
-            if len(v):
-                n += 1
+            if len(v): n += 1
             continue
-        n += 1
+        n +=1
     return n
 
 
@@ -102,6 +94,8 @@ class Factory:
     def subclass(cls, name, bases, dict={}):
         if not isinstance(bases, tuple):
             bases = (bases,)
+        # name is type unicode in python 2 -> not accepted by the type()
+        name = str(name)
         key = '.'.join((name, str(bases)))
         subclass = cls.cache.get(key)
         if subclass is None:
@@ -116,7 +110,7 @@ class Factory:
             inst = subclass()
         else:
             inst = Object()
-        for a in dict.items():
+        for a in list(dict.items()):
             setattr(inst, a[0], a[1])
         return inst
 
@@ -130,7 +124,7 @@ class Factory:
         return subclass(value)
 
 
-class Object:
+class Object(UnicodeMixin):
 
     def __init__(self):
         self.__keylist__ = []
@@ -138,14 +132,17 @@ class Object:
         self.__metadata__ = Metadata()
 
     def __setattr__(self, name, value):
-        if not is_builtin(name) and name not in self.__keylist__:
+        builtin = name.startswith('__') and name.endswith('__')
+        if not builtin and \
+            name not in self.__keylist__:
             self.__keylist__.append(name)
         self.__dict__[name] = value
 
     def __delattr__(self, name):
         try:
             del self.__dict__[name]
-            if not is_builtin(name):
+            builtin = name.startswith('__') and name.endswith('__')
+            if not builtin:
                 self.__keylist__.remove(name)
         except:
             cls = self.__class__.__name__
@@ -168,8 +165,8 @@ class Object:
     def __contains__(self, name):
         return name in self.__keylist__
 
-    def __str__(self):
-        return self.__printer__.tostr(self)
+    def __repr__(self):
+        return str(self)
 
     def __unicode__(self):
         return self.__printer__.tostr(self)
@@ -183,9 +180,6 @@ class Iter:
         self.index = 0
 
     def __next__(self):
-        return self.next()
-
-    def next(self):
         keylist = self.keylist
         nkeys = len(self.keylist)
         while self.index < nkeys:
@@ -254,8 +248,7 @@ class Printer:
     """
 
     @classmethod
-    def indent(cls, n):
-        return '%*s' % (n * 3, ' ')
+    def indent(cls, n): return '%*s'%(n*3,' ')
 
     def tostr(self, object, indent=-2):
         """ get s string representation of object """
@@ -269,19 +262,16 @@ class Printer:
         if isinstance(object, Object):
             if len(object) == 0:
                 return '<empty>'
-            else:
-                return self.print_object(object, h, n+2, nl)
+            return self.print_object(object, h, n+2, nl)
         if isinstance(object, dict):
             if len(object) == 0:
                 return '<empty>'
-            else:
-                return self.print_dictionary(object, h, n+2, nl)
-        if isinstance(object, (list, tuple)):
+            return self.print_dictionary(object, h, n+2, nl)
+        if isinstance(object, (list,tuple)):
             if len(object) == 0:
                 return '<empty>'
-            else:
-                return self.print_collection(object, h, n+2)
-        if isinstance(object, basestring):
+            return self.print_collection(object, h, n+2)
+        if isinstance(object, str):
             return '"%s"' % tostr(object)
         return '%s' % tostr(object)
 
@@ -289,7 +279,6 @@ class Printer:
         """ print complex using the specified indent (n) and newline (nl). """
         s = []
         cls = d.__class__
-        md = d.__metadata__
         if d in h:
             s.append('(')
             s.append(cls.__name__)
@@ -303,7 +292,7 @@ class Printer:
         if cls != Object:
             s.append('(')
             if isinstance(d, Facade):
-                s.append(md.facade)
+                s.append(d.__metadata__.facade)
             else:
                 s.append(cls.__name__)
             s.append(')')
@@ -314,7 +303,7 @@ class Printer:
             item = self.unwrap(d, item)
             s.append('\n')
             s.append(self.indent(n+1))
-            if isinstance(item[1], (list, tuple)):
+            if isinstance(item[1], (list,tuple)):
                 s.append(item[0])
                 s.append('[]')
             else:
@@ -329,18 +318,17 @@ class Printer:
 
     def print_dictionary(self, d, h, n, nl=False):
         """ print complex using the specified indent (n) and newline (nl). """
-        if d in h:
-            return '{}...'
+        if d in h: return '{}...'
         h.append(d)
         s = []
         if nl:
             s.append('\n')
             s.append(self.indent(n))
         s.append('{')
-        for item in d.items():
+        for item in list(d.items()):
             s.append('\n')
             s.append(self.indent(n+1))
-            if isinstance(item[1], (list, tuple)):
+            if isinstance(item[1], (list,tuple)):
                 s.append(tostr(item[0]))
                 s.append('[]')
             else:
@@ -354,9 +342,8 @@ class Printer:
         return ''.join(s)
 
     def print_collection(self, c, h, n):
-        """print collection using the specified indent (n) and newline (nl)."""
-        if c in h:
-            return '[]...'
+        """ print collection using the specified indent (n) and newline (nl). """
+        if c in h: return '[]...'
         h.append(c)
         s = []
         for item in c:
@@ -390,7 +377,7 @@ class Printer:
             if pmd is None:
                 return False
             excludes = getattr(pmd, 'excludes', [])
-            return item[0] in excludes
+            return ( item[0] in excludes )
         except:
             pass
         return False

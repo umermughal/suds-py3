@@ -18,7 +18,8 @@
 Contains XML text classes.
 """
 
-from suds import sax
+from suds import *
+from suds.sax import *
 
 
 class Text(str):
@@ -29,7 +30,7 @@ class Text(str):
     @ivar escaped: The (optional) XML special character escaped flag.
     @type escaped: bool
     """
-    __slots__ = ('lang', 'escaped',)
+    __slots__ = ('lang', 'escaped')
 
     @classmethod
     def __valid(cls, *args):
@@ -54,7 +55,7 @@ class Text(str):
         """
         if not self.escaped:
             post = sax.encoder.encode(self)
-            escaped = post != self
+            escaped = ( post != self )
             return Text(post, lang=self.lang, escaped=escaped)
         return self
 
@@ -74,7 +75,7 @@ class Text(str):
         return Text(post, lang=self.lang, escaped=self.escaped)
 
     def __add__(self, other):
-        joined = u''.join((self, other))
+        joined = ''.join((self, other))
         result = Text(joined, lang=self.lang, escaped=self.escaped)
         if isinstance(other, Text):
             result.escaped = self.escaped or other.escaped
@@ -86,7 +87,7 @@ class Text(str):
             s.append(' [%s]' % self.lang)
         if self.escaped:
             s.append(' <escaped>')
-        return ''.join(s).__repr__()
+        return ''.join(s)
 
     def __getstate__(self):
         state = {}
@@ -111,5 +112,5 @@ class Raw(Text):
         return self
 
     def __add__(self, other):
-        joined = u''.join((self, other))
+        joined = ''.join((self, other))
         return Raw(joined, lang=self.lang)

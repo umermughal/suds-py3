@@ -18,19 +18,20 @@
 The I{query} module defines a class for performing schema queries.
 """
 
-from logging import getLogger
-from suds import Object, Repr, objid, tostr
+from suds import *
+from suds.sudsobject import *
 from suds.xsd import qualify, isqref
 from suds.xsd.sxbuiltin import Factory
 
+from logging import getLogger
 log = getLogger(__name__)
 
 
 class Query(Object):
     """
     Schema query base class.
-    """
 
+    """
     def __init__(self, ref=None):
         """
         @param ref: The schema reference being queried.
@@ -47,8 +48,8 @@ class Query(Object):
     def execute(self, schema):
         """
         Execute this query using the specified schema.
-        @param schema: The schema associated with the query.  The schema
-            is used by the query to search for items.
+        @param schema: The schema associated with the query. The schema is used
+            by the query to search for items.
         @type schema: L{schema.Schema}
         @return: The item matching the search criteria.
         @rtype: L{sxbase.SchemaObject}
@@ -65,7 +66,7 @@ class Query(Object):
         """
         if result is None:
             return True
-        reject = result in self.history
+        reject = ( result in self.history )
         if reject:
             log.debug('result %s, rejected by\n%s', Repr(result), self)
         return reject
@@ -88,11 +89,11 @@ class Query(Object):
 
 class BlindQuery(Query):
     """
-    Schema query class that I{blindly} searches for a reference in
-    the specified schema.  It may be used to find Elements and Types but
-    will match on an Element first.  This query will also find builtins.
-    """
+    Schema query class that I{blindly} searches for a reference in the
+    specified schema. It may be used to find Elements and Types but will match
+    on an Element first. This query will also find builtins.
 
+    """
     def execute(self, schema):
         if schema.builtin(self.ref):
             name = self.ref[0]
@@ -115,10 +116,10 @@ class BlindQuery(Query):
 
 class TypeQuery(Query):
     """
-    Schema query class that searches for Type references in
-    the specified schema.  Matches on root types only.
-    """
+    Schema query class that searches for Type references in the specified
+    schema. Matches on root types only.
 
+    """
     def execute(self, schema):
         if schema.builtin(self.ref):
             name = self.ref[0]
@@ -133,10 +134,10 @@ class TypeQuery(Query):
 
 class GroupQuery(Query):
     """
-    Schema query class that searches for Group references in
-    the specified schema.
-    """
+    Schema query class that searches for Group references in the specified
+    schema.
 
+    """
     def execute(self, schema):
         result = schema.groups.get(self.ref)
         if self.filter(result):
@@ -147,10 +148,10 @@ class GroupQuery(Query):
 class AttrQuery(Query):
     """
     Schema query class that searches for Attribute references in the specified
-    schema.  Matches on root Attribute by qname first, then searches deep into
+    schema. Matches on root Attribute by qname first, then searches deeper into
     the document.
-    """
 
+    """
     def execute(self, schema):
         result = schema.attributes.get(self.ref)
         if self.filter(result):
@@ -171,10 +172,10 @@ class AttrQuery(Query):
 
 class AttrGroupQuery(Query):
     """
-    Schema query class that searches for attributeGroup references in
-    the specified schema.
-    """
+    Schema query class that searches for attributeGroup references in the
+    specified schema.
 
+    """
     def execute(self, schema):
         result = schema.agrps.get(self.ref)
         if self.filter(result):
@@ -185,10 +186,10 @@ class AttrGroupQuery(Query):
 class ElementQuery(Query):
     """
     Schema query class that searches for Element references in the specified
-    schema.  Matches on root Elements by qname first, then searches deep into
+    schema. Matches on root Elements by qname first, then searches deeper into
     the document.
-    """
 
+    """
     def execute(self, schema):
         result = schema.elements.get(self.ref)
         if self.filter(result):

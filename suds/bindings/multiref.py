@@ -1,29 +1,27 @@
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the (LGPL) GNU Lesser General Public License as
-# published by the Free Software Foundation; either version 3 of the
-# License, or (at your option) any later version.
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the (LGPL) GNU Lesser General Public License as published by the
+# Free Software Foundation; either version 3 of the License, or (at your
+# option) any later version.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Library Lesser General Public License for more details at
-# ( http://www.gnu.org/licenses/lgpl.html ).
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU Library Lesser General Public License
+# for more details at ( http://www.gnu.org/licenses/lgpl.html ).
 #
 # You should have received a copy of the GNU Lesser General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 # written by: Jeff Ortel ( jortel@redhat.com )
 
 """
 Provides classes for handling soap multirefs.
 """
 
-from logging import getLogger
+from suds import *
+from suds.sax.element import Element
 
-log = getLogger(__name__)
 
 soapenc = (None, 'http://schemas.xmlsoap.org/soap/encoding/')
-
 
 class MultiRef:
     """
@@ -56,9 +54,8 @@ class MultiRef:
 
     def update(self, node):
         """
-        Update the specified I{node} by replacing the I{multiref} references
-        with the contents of the referenced nodes and remove the I{href}
-        attribute.
+        Update the specified I{node} by replacing the I{multiref} references with
+        the contents of the referenced nodes and remove the I{href} attribute.
         @param node: A node to update.
         @type node: L{Element}
         @return: The updated node
@@ -83,6 +80,8 @@ class MultiRef:
         id = href.getValue()
         ref = self.catalog.get(id)
         if ref is None:
+            import logging
+            log = logging.getLogger(__name__)
             log.error('soap multiref: %s, not-resolved', id)
             return
         node.append(ref.children)
@@ -103,8 +102,7 @@ class MultiRef:
             if self.soaproot(child):
                 self.nodes.append(child)
             id = child.get('id')
-            if id is None:
-                continue
+            if id is None: continue
             key = '#%s' % id
             self.catalog[key] = child
 
@@ -123,4 +121,4 @@ class MultiRef:
         if root is None:
             return True
         else:
-            return root.value == '1'
+            return ( root.value == '1' )

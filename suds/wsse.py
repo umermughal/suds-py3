@@ -18,6 +18,8 @@
 The I{wsse} module provides WS-Security.
 """
 
+from logging import getLogger
+from suds import *
 from suds.sudsobject import Object
 from suds.sax.element import Element
 from suds.sax.date import DateTime, UtcTimezone
@@ -30,19 +32,18 @@ except ImportError:
     from md5 import md5
 
 
-dsns = ('ds', 'http://www.w3.org/2000/09/xmldsig#')
-wssens = (
-    'wsse',
-    'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd'
-    )
-wsuns = (
-    'wsu',
-    'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd'
-    )
-wsencns = (
-    'wsenc',
-    'http://www.w3.org/2001/04/xmlenc#'
-    )
+dsns = \
+    ('ds',
+     'http://www.w3.org/2000/09/xmldsig#')
+wssens = \
+    ('wsse',
+     'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd')
+wsuns = \
+    ('wsu',
+     'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd')
+wsencns = \
+    ('wsenc',
+     'http://www.w3.org/2001/04/xmlenc#')
 
 
 class Security(Object):
@@ -93,7 +94,7 @@ class Token(Object):
 
     @classmethod
     def sysdate(cls):
-        utc = DateTime(cls.utc())
+        utc = DateTime(self.utc())
         return str(utc)
 
     def __init__(self):
@@ -107,7 +108,7 @@ class UsernameToken(Token):
     @type username: str
     @ivar password: A password.
     @type password: str
-    @ivar nonce: A set of bytes to prevent reply attacks.
+    @ivar nonce: A set of bytes to prevent replay attacks.
     @type nonce: str
     @ivar created: The token created.
     @type created: L{datetime}
@@ -128,8 +129,8 @@ class UsernameToken(Token):
 
     def setnonce(self, text=None):
         """
-        Set I{nonce} which is arbitraty set of bytes to prevent
-        reply attacks.
+        Set I{nonce} which is an arbitrary set of bytes to prevent replay
+        attacks.
         @param text: The nonce text value.
             Generated when I{None}.
         @type text: str
@@ -140,7 +141,7 @@ class UsernameToken(Token):
             s.append(self.password)
             s.append(Token.sysdate())
             m = md5()
-            m.update(':'.join(s).encode("utf-8"))
+            m.update(':'.join(s))
             self.nonce = m.hexdigest()
         else:
             self.nonce = text
@@ -156,6 +157,7 @@ class UsernameToken(Token):
             self.created = Token.utc()
         else:
             self.created = dt
+
 
     def xml(self):
         """

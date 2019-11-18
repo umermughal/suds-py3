@@ -15,28 +15,29 @@
 # written by: Jeff Ortel ( jortel@redhat.com )
 
 """
-The I{schema} module provides a intelligent representation of
+The I{schema} module provides an intelligent representation of
 an XSD schema.  The I{raw} model is the XML tree and the I{model}
 is the denormalized, objectified and intelligent view of the schema.
 Most of the I{value-add} provided by the model is centered around
-tranparent referenced type resolution and targeted denormalization.
+transparent referenced type resolution and targeted denormalization.
 """
 
 
-from suds import objid, Repr
-from suds.xsd import isqref
-from suds.xsd.sxbuiltin import Factory
-from suds.compat import unicode
+from suds import *
+from suds.xsd import *
+from suds.xsd.sxbuiltin import *
 from suds.xsd.sxbasic import Factory as BasicFactory
+from suds.xsd.sxbuiltin import Factory as BuiltinFactory
+from suds.xsd.sxbase import SchemaObject
 from suds.xsd.deplist import DepList
 from suds.sax.element import Element
 from suds.sax import splitPrefix, Namespace
-from logging import getLogger
 
+from logging import getLogger
 log = getLogger(__name__)
 
 
-class SchemaCollection:
+class SchemaCollection(UnicodeMixin):
     """
     A collection of schema objects.  This class is needed because WSDLs
     may contain more then one <schema/> node.
@@ -103,7 +104,7 @@ class SchemaCollection:
         @return: self
         @rtype: L{SchemaCollection}
         """
-        namespaces = self.namespaces.keys()
+        namespaces = list(self.namespaces.keys())
         for s in self.children:
             for ns in namespaces:
                 tns = s.root.get('targetNamespace')
@@ -123,7 +124,7 @@ class SchemaCollection:
         the namespace is compared to each schema's I{targetNamespace}
         @param ns: A namespace.
         @type ns: (prefix,URI)
-        @return: The schema matching the namesapce, else None.
+        @return: The schema matching the namespace, else None.
         @rtype: L{Schema}
         """
         return self.namespaces.get(ns[1])
@@ -145,12 +146,6 @@ class SchemaCollection:
     def __len__(self):
         return len(self.children)
 
-    def __str__(self):
-        result = ['\nschema collection']
-        for s in self.children:
-            result.append(s.str(1))
-        return '\n'.join(result)
-
     def __unicode__(self):
         result = ['\nschema collection']
         for s in self.children:
@@ -158,7 +153,7 @@ class SchemaCollection:
         return '\n'.join(result)
 
 
-class Schema:
+class Schema(UnicodeMixin):
     """
     The schema is an objectification of a <schema/> (xsd) definition.
     It provides inspection, lookup and type resolution.
@@ -221,7 +216,7 @@ class Schema:
         if form is None:
             self.form_qualified = False
         else:
-            self.form_qualified = form == 'qualified'
+            self.form_qualified = ( form == 'qualified' )
         if container is None:
             self.build()
             self.open_imports(options)
@@ -261,32 +256,32 @@ class Schema:
     def merge(self, schema):
         """
         Merge the contents from the schema.  Only objects not already contained
-        in this schema's collections are merged.  This is to provide for
-        bidirectional import which produce cyclic includes.
+        in this schema's collections are merged.  This is to provide for bidirectional
+        import which produce cyclic includes.
         @returns: self
         @rtype: L{Schema}
         """
-        for item in schema.attributes.items():
+        for item in list(schema.attributes.items()):
             if item[0] in self.attributes:
                 continue
             self.all.append(item[1])
             self.attributes[item[0]] = item[1]
-        for item in schema.elements.items():
+        for item in list(schema.elements.items()):
             if item[0] in self.elements:
                 continue
             self.all.append(item[1])
             self.elements[item[0]] = item[1]
-        for item in schema.types.items():
+        for item in list(schema.types.items()):
             if item[0] in self.types:
                 continue
             self.all.append(item[1])
             self.types[item[0]] = item[1]
-        for item in schema.groups.items():
+        for item in list(schema.groups.items()):
             if item[0] in self.groups:
                 continue
             self.all.append(item[1])
             self.groups[item[0]] = item[1]
-        for item in schema.agrps.items():
+        for item in list(schema.agrps.items()):
             if item[0] in self.agrps:
                 continue
             self.all.append(item[1])
@@ -327,8 +322,7 @@ class Schema:
             indexes[x] = midx
         for x, deps in deplist.sort():
             midx = indexes.get(x)
-            if midx is None:
-                continue
+            if midx is None: continue
             d = deps[midx]
             log.debug('(%s) merging %s <== %s', self.tns[1], Repr(x), Repr(d))
             x.merge(d)
@@ -340,7 +334,7 @@ class Schema:
         The request is passed to the container.
         @param ns: A namespace.
         @type ns: (prefix,URI)
-        @return: The schema matching the namesapce, else None.
+        @return: The schema matching the namespace, else None.
         @rtype: L{Schema}
         """
         if self.container is not None:
@@ -359,7 +353,7 @@ class Schema:
         if ref is None:
             return True
         else:
-            return not self.builtin(ref, context)
+            return ( not self.builtin(ref, context) )
 
     def builtin(self, ref, context=None):
         """
@@ -373,12 +367,12 @@ class Schema:
         try:
             if isqref(ref):
                 ns = ref[1]
-                return ref[0] in Factory.tags and ns.startswith(w3)
+                return ( ref[0] in Factory.tags and ns.startswith(w3) )
             if context is None:
                 context = self.root
             prefix = splitPrefix(ref)[0]
             prefixes = context.findPrefixes(w3, 'startswith')
-            return prefix in prefixes and ref[0] in Factory.tags
+            return ( prefix in prefixes and ref[0] in Factory.tags )
         except:
             return False
 
@@ -399,7 +393,7 @@ class Schema:
         return Schema(root, baseurl, options)
 
     def str(self, indent=0):
-        tab = '%*s' % (indent * 3, '')
+        tab = '%*s'%(indent*3, '')
         result = []
         result.append('%s%s' % (tab, self.id))
         result.append('%s(raw)' % tab)
@@ -411,11 +405,7 @@ class Schema:
         return '\n'.join(result)
 
     def __repr__(self):
-        myrep = '<%s tns="%s"/>' % (self.id, self.tns[1])
-        return myrep.encode('utf-8')
-
-    def __str__(self):
-        return self.str()
+        return '<%s tns="%s"/>' % (self.id, self.tns[1])
 
     def __unicode__(self):
         return self.str()

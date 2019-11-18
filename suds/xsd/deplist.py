@@ -15,19 +15,18 @@
 # written by: Jeff Ortel ( jortel@redhat.com )
 
 """
-The I{depsolve} module defines a class for performing dependancy solving.
+The I{depsolve} module defines a class for performing dependency solving.
 """
 
+from suds import *
+
 from logging import getLogger
-
-from suds import Repr
-
 log = getLogger(__name__)
 
 
 class DepList:
     """
-    Dependancy solving list.
+    Dependency solving list.
     Items are tuples: (object, (deps,))
     @ivar raw: The raw (unsorted) items.
     @type raw: list
@@ -66,7 +65,7 @@ class DepList:
 
     def sort(self):
         """
-        Sort the list based on dependancies.
+        Sort the list based on dependencies.
         @return: The sorted items.
         @rtype: list
         """
@@ -131,11 +130,11 @@ class DepList:
 if __name__ == '__main__':
     a = ('a', ('x',))
     b = ('b', ('a',))
-    c = ('c', ('a', 'b'))
+    c = ('c', ('a','b'))
     d = ('d', ('c',))
-    e = ('e', ('d', 'a'))
-    f = ('f', ('e', 'c', 'd', 'a'))
+    e = ('e', ('d','a'))
+    f = ('f', ('e','c','d','a'))
     x = ('x', ())
     L = DepList()
     L.add(c, e, d, b, f, a, x)
-    print([item[0] for item in L.sort()])
+    print([x[0] for x in L.sort()])

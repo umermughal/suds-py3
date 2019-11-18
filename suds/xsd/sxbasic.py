@@ -23,12 +23,12 @@ from suds import *
 from suds.xsd import *
 from suds.xsd.sxbase import *
 from suds.xsd.query import *
-from suds.sax import splitPrefix, Namespace
+from suds.sax import Namespace
 from suds.transport import TransportError
 from suds.reader import DocumentReader
 from urllib.parse import urljoin
 
-
+from logging import getLogger
 log = getLogger(__name__)
 
 
@@ -44,15 +44,46 @@ class TypedContent(Content):
     """
     Represents any I{typed} content.
     """
+
+    def __init__(self, *args, **kwargs):
+        Content.__init__(self, *args, **kwargs)
+        self.resolved_cache = {}
+
     def resolve(self, nobuiltin=False):
+        """
+        Resolve the node's type reference and return the referenced type node.
+
+        Returns self if the type is defined locally, e.g. as a <complexType>
+        subnode. Otherwise returns the referenced external node.
+        @param nobuiltin: Flag indicating whether resolving to XSD builtin
+            types should not be allowed.
+        @return: The resolved (true) type.
+        @rtype: L{SchemaObject}
+        """
+        cached = self.resolved_cache.get(nobuiltin)
+        if cached is not None:
+            return cached
+        resolved = self.__resolve_type(nobuiltin)
+        self.resolved_cache[nobuiltin] = resolved
+        return resolved
+
+    def __resolve_type(self, nobuiltin=False):
+        """
+        Private resolve() worker without any result caching.
+        @param nobuiltin: Flag indicating whether resolving to XSD builtin
+            types should not be allowed.
+        @return: The resolved (true) type.
+        @rtype: L{SchemaObject}
+
+        Implementation note:
+          Note that there is no need for a recursive implementation here since
+        a node can reference an external type node but there is no way using
+        WSDL to then make that type node actually be a reference to a different
+        type node.
+        """
         qref = self.qref()
         if qref is None:
             return self
-        key = 'resolved:nb=%s' % nobuiltin
-        cached = self.cache.get(key)
-        if cached is not None:
-            return cached
-        result = self
         query = TypeQuery(qref)
         query.history = [self]
         log.debug('%s, resolving: %s\n using:%s', self.id, qref, query)
@@ -60,21 +91,15 @@ class TypedContent(Content):
         if resolved is None:
             log.debug(self.schema)
             raise TypeNotFound(qref)
-        self.cache[key] = resolved
-        if resolved.builtin():
-            if nobuiltin:
-                result = self
-            else:
-                result = resolved
-        else:
-            result = resolved.resolve(nobuiltin)
-        return result
+        if resolved.builtin() and nobuiltin:
+            return self
+        return resolved
 
     def qref(self):
         """
-        Get the I{type} qualified reference to the referenced xsd type.
+        Get the I{type} qualified reference to the referenced XSD type.
         This method takes into account simple types defined through
-        restriction with are detected by determining that self is simple
+        restriction which are detected by determining that self is simple
         (len=0) and by finding a restriction child.
         @return: The I{type} qualified reference.
         @rtype: qref
@@ -92,22 +117,14 @@ class TypedContent(Content):
 
 class Complex(SchemaObject):
     """
-    Represents an (xsd) schema <xs:complexType/> node.
-    @cvar childtags: A list of valid child node names
+    Represents an (XSD) schema <xs:complexType/> node.
+    @cvar childtags: A list of valid child node names.
     @type childtags: (I{str},...)
     """
 
     def childtags(self):
-        return (
-            'attribute',
-            'attributeGroup',
-            'sequence',
-            'all',
-            'choice',
-            'complexContent',
-            'simpleContent',
-            'any',
-            'group')
+        return 'attribute', 'attributeGroup', 'sequence', 'all', 'choice',  \
+            'complexContent', 'simpleContent', 'any', 'group'
 
     def description(self):
         return ('name',)
@@ -127,13 +144,13 @@ class Complex(SchemaObject):
 
 class Group(SchemaObject):
     """
-    Represents an (xsd) schema <xs:group/> node.
-    @cvar childtags: A list of valid child node names
+    Represents an (XSD) schema <xs:group/> node.
+    @cvar childtags: A list of valid child node names.
     @type childtags: (I{str},...)
     """
 
     def childtags(self):
-        return ('sequence', 'all', 'choice')
+        return 'sequence', 'all', 'choice'
 
     def dependencies(self):
         deps = []
@@ -146,25 +163,25 @@ class Group(SchemaObject):
                 raise TypeNotFound(self.ref)
             deps.append(g)
             midx = 0
-        return (midx, deps)
+        return midx, deps
 
     def merge(self, other):
         SchemaObject.merge(self, other)
         self.rawchildren = other.rawchildren
 
     def description(self):
-        return ('name', 'ref',)
+        return 'name', 'ref'
 
 
 class AttributeGroup(SchemaObject):
     """
-    Represents an (xsd) schema <xs:attributeGroup/> node.
-    @cvar childtags: A list of valid child node names
+    Represents an (XSD) schema <xs:attributeGroup/> node.
+    @cvar childtags: A list of valid child node names.
     @type childtags: (I{str},...)
     """
 
     def childtags(self):
-        return ('attribute', 'attributeGroup')
+        return 'attribute', 'attributeGroup'
 
     def dependencies(self):
         deps = []
@@ -177,23 +194,23 @@ class AttributeGroup(SchemaObject):
                 raise TypeNotFound(self.ref)
             deps.append(ag)
             midx = 0
-        return (midx, deps)
+        return midx, deps
 
     def merge(self, other):
         SchemaObject.merge(self, other)
         self.rawchildren = other.rawchildren
 
     def description(self):
-        return ('name', 'ref',)
+        return 'name', 'ref'
 
 
 class Simple(SchemaObject):
     """
-    Represents an (xsd) schema <xs:simpleType/> node
+    Represents an (XSD) schema <xs:simpleType/> node.
     """
 
     def childtags(self):
-        return ('restriction', 'any', 'list',)
+        return 'restriction', 'any', 'list'
 
     def enum(self):
         for child, ancestry in self.children():
@@ -222,7 +239,7 @@ class Simple(SchemaObject):
 
 class List(SchemaObject):
     """
-    Represents an (xsd) schema <xs:list/> node
+    Represents an (XSD) schema <xs:list/> node.
     """
 
     def childtags(self):
@@ -237,7 +254,7 @@ class List(SchemaObject):
 
 class Restriction(SchemaObject):
     """
-    Represents an (xsd) schema <xs:restriction/> node
+    Represents an (XSD) schema <xs:restriction/> node.
     """
 
     def __init__(self, schema, root):
@@ -245,7 +262,7 @@ class Restriction(SchemaObject):
         self.ref = root.get('base')
 
     def childtags(self):
-        return ('enumeration', 'attribute', 'attributeGroup')
+        return 'enumeration', 'attribute', 'attributeGroup'
 
     def dependencies(self):
         deps = []
@@ -259,7 +276,7 @@ class Restriction(SchemaObject):
             if not super.builtin():
                 deps.append(super)
                 midx = 0
-        return (midx, deps)
+        return midx, deps
 
     def restriction(self):
         return True
@@ -275,19 +292,19 @@ class Restriction(SchemaObject):
 
 class Collection(SchemaObject):
     """
-    Represents an (xsd) schema collection node:
+    Represents an (XSD) schema collection node:
         - sequence
         - choice
         - all
     """
 
     def childtags(self):
-        return ('element', 'sequence', 'all', 'choice', 'any', 'group')
+        return 'element', 'sequence', 'all', 'choice', 'any', 'group'
 
 
 class Sequence(Collection):
     """
-    Represents an (xsd) schema <xs:sequence/> node.
+    Represents an (XSD) schema <xs:sequence/> node.
     """
     def sequence(self):
         return True
@@ -295,7 +312,7 @@ class Sequence(Collection):
 
 class All(Collection):
     """
-    Represents an (xsd) schema <xs:all/> node.
+    Represents an (XSD) schema <xs:all/> node.
     """
     def all(self):
         return True
@@ -303,7 +320,7 @@ class All(Collection):
 
 class Choice(Collection):
     """
-    Represents an (xsd) schema <xs:choice/> node.
+    Represents an (XSD) schema <xs:choice/> node.
     """
     def choice(self):
         return True
@@ -311,11 +328,11 @@ class Choice(Collection):
 
 class ComplexContent(SchemaObject):
     """
-    Represents an (xsd) schema <xs:complexContent/> node.
+    Represents an (XSD) schema <xs:complexContent/> node.
     """
 
     def childtags(self):
-        return ('attribute', 'attributeGroup', 'extension', 'restriction')
+        return 'attribute', 'attributeGroup', 'extension', 'restriction'
 
     def extension(self):
         for c in self.rawchildren:
@@ -332,11 +349,11 @@ class ComplexContent(SchemaObject):
 
 class SimpleContent(SchemaObject):
     """
-    Represents an (xsd) schema <xs:simpleContent/> node.
+    Represents an (XSD) schema <xs:simpleContent/> node.
     """
 
     def childtags(self):
-        return ('extension', 'restriction')
+        return 'extension', 'restriction'
 
     def extension(self):
         for c in self.rawchildren:
@@ -356,12 +373,15 @@ class SimpleContent(SchemaObject):
 
 class Enumeration(Content):
     """
-    Represents an (xsd) schema <xs:enumeration/> node
+    Represents an (XSD) schema <xs:enumeration/> node.
     """
 
     def __init__(self, schema, root):
         Content.__init__(self, schema, root)
         self.name = root.get('value')
+
+    def description(self):
+        return ('name',)
 
     def enum(self):
         return True
@@ -369,17 +389,17 @@ class Enumeration(Content):
 
 class Element(TypedContent):
     """
-    Represents an (xsd) schema <xs:element/> node.
+    Represents an (XSD) schema <xs:element/> node.
     """
 
     def __init__(self, schema, root):
         TypedContent.__init__(self, schema, root)
         a = root.get('form')
         if a is not None:
-            self.form_qualified = a == 'qualified'
+            self.form_qualified = ( a == 'qualified' )
         a = self.root.get('nillable')
         if a is not None:
-            self.nillable = a in ('1', 'true')
+            self.nillable = ( a in ('1', 'true') )
         self.implany()
 
     def implany(self):
@@ -390,12 +410,14 @@ class Element(TypedContent):
         @return: self
         @rtype: L{Element}
         """
-        if self.type is None and self.ref is None and self.root.isempty():
-            self.type = self.anytype()
+        if self.type is None and \
+            self.ref is None and \
+            self.root.isempty():
+                self.type = self.anytype()
         return self
 
     def childtags(self):
-        return ('attribute', 'simpleType', 'complexType', 'any',)
+        return 'attribute', 'simpleType', 'complexType', 'any'
 
     def extension(self):
         for c in self.rawchildren:
@@ -412,22 +434,18 @@ class Element(TypedContent):
     def dependencies(self):
         deps = []
         midx = None
-        if self.ref is not None:
-            query = ElementQuery(self.ref)
-            e = query.execute(self.schema)
-            if e is None:
-                log.debug(self.schema)
-                raise TypeNotFound(self.ref)
+        e = self.__deref()
+        if e is not None:
             deps.append(e)
             midx = 0
-        return (midx, deps)
+        return midx, deps
 
     def merge(self, other):
         SchemaObject.merge(self, other)
         self.rawchildren = other.rawchildren
 
     def description(self):
-        return ('name', 'ref', 'type')
+        return 'name', 'ref', 'type'
 
     def anytype(self):
         """ create an xsd:anyType reference """
@@ -438,10 +456,37 @@ class Element(TypedContent):
             self.root.addPrefix(p, u)
         return ':'.join((mp, 'anyType'))
 
+    def namespace(self, prefix=None):
+        """
+        Get this schema element's target namespace.
+
+        In case of reference elements, the target namespace is defined by the
+        referenced and not the referencing element node.
+
+        @param prefix: The default prefix.
+        @type prefix: str
+        @return: The schema element's target namespace
+        @rtype: (I{prefix},I{URI})
+        """
+        e = self.__deref()
+        if e is not None:
+            return e.namespace(prefix)
+        return super(Element, self).namespace()
+
+    def __deref(self):
+        if self.ref is None:
+            return
+        query = ElementQuery(self.ref)
+        e = query.execute(self.schema)
+        if e is None:
+            log.debug(self.schema)
+            raise TypeNotFound(self.ref)
+        return e
+
 
 class Extension(SchemaObject):
     """
-    Represents an (xsd) schema <xs:extension/> node.
+    Represents an (XSD) schema <xs:extension/> node.
     """
 
     def __init__(self, schema, root):
@@ -449,12 +494,8 @@ class Extension(SchemaObject):
         self.ref = root.get('base')
 
     def childtags(self):
-        return ('attribute',
-                'attributeGroup',
-                'sequence',
-                'all',
-                'choice',
-                'group')
+        return 'attribute', 'attributeGroup', 'sequence', 'all', 'choice',  \
+            'group'
 
     def dependencies(self):
         deps = []
@@ -468,7 +509,7 @@ class Extension(SchemaObject):
             if not super.builtin():
                 deps.append(super)
                 midx = 0
-        return (midx, deps)
+        return midx, deps
 
     def merge(self, other):
         SchemaObject.merge(self, other)
@@ -484,7 +525,7 @@ class Extension(SchemaObject):
 
 class Import(SchemaObject):
     """
-    Represents an (xsd) schema <xs:import/> node
+    Represents an (XSD) schema <xs:import/> node.
     @cvar locations: A dictionary of namespace locations.
     @type locations: dict
     @ivar ns: The imported namespace.
@@ -531,11 +572,7 @@ class Import(SchemaObject):
         if self.opened:
             return
         self.opened = True
-        log.debug('%s, importing ns="%s", location="%s"',
-                  self.id,
-                  self.ns[1],
-                  self.location
-                  )
+        log.debug('%s, importing ns="%s", location="%s"', self.id, self.ns[1], self.location)
         result = self.locate()
         if result is None:
             if self.location is None:
@@ -547,9 +584,7 @@ class Import(SchemaObject):
 
     def locate(self):
         """ find the schema locally """
-        if self.ns[1] == self.schema.tns[1]:
-            return None
-        else:
+        if self.ns[1] != self.schema.tns[1]:
             return self.schema.locate(self.ns)
 
     def download(self, options):
@@ -569,12 +604,12 @@ class Import(SchemaObject):
             raise Exception(msg)
 
     def description(self):
-        return ('ns', 'location')
+        return 'ns', 'location'
 
 
 class Include(SchemaObject):
     """
-    Represents an (xsd) schema <xs:include/> node
+    Represents an (XSD) schema <xs:include/> node.
     @ivar location: The (optional) location.
     @type location: namespace-uri
     @ivar opened: Opened and I{imported} flag.
@@ -634,13 +669,14 @@ class Include(SchemaObject):
             if self.schema.tns[1] != tns:
                 raise Exception('%s mismatch' % TNS)
 
+
     def description(self):
-        return ('location')
+        return 'location'
 
 
 class Attribute(TypedContent):
     """
-    Represents an (xsd) <attribute/> node
+    Represents an (XSD) <attribute/> node.
     """
 
     def __init__(self, schema, root):
@@ -675,28 +711,28 @@ class Attribute(TypedContent):
                 raise TypeNotFound(self.ref)
             deps.append(a)
             midx = 0
-        return (midx, deps)
+        return midx, deps
 
     def description(self):
-        return ('name', 'ref', 'type')
+        return 'name', 'ref', 'type'
 
 
 class Any(Content):
     """
-    Represents an (xsd) <any/> node
+    Represents an (XSD) <any/> node.
     """
 
     def get_child(self, name):
         root = self.root.clone()
         root.set('note', 'synthesized (any) child')
         child = Any(self.schema, root)
-        return (child, [])
+        return child, []
 
     def get_attribute(self, name):
         root = self.root.clone()
         root.set('note', 'synthesized (any) attribute')
         attribute = Any(self.schema, root)
-        return (attribute, [])
+        return attribute, []
 
     def any(self):
         return True
@@ -709,31 +745,31 @@ class Factory:
     """
 
     tags = {
-        'import': Import,
-        'include': Include,
-        'complexType': Complex,
-        'group': Group,
-        'attributeGroup': AttributeGroup,
-        'simpleType': Simple,
-        'list': List,
-        'element': Element,
-        'attribute': Attribute,
-        'sequence': Sequence,
-        'all': All,
-        'choice': Choice,
-        'complexContent': ComplexContent,
-        'simpleContent': SimpleContent,
-        'restriction': Restriction,
-        'enumeration': Enumeration,
-        'extension': Extension,
-        'any': Any,
+        'import' : Import,
+        'include' : Include,
+        'complexType' : Complex,
+        'group' : Group,
+        'attributeGroup' : AttributeGroup,
+        'simpleType' : Simple,
+        'list' : List,
+        'element' : Element,
+        'attribute' : Attribute,
+        'sequence' : Sequence,
+        'all' : All,
+        'choice' : Choice,
+        'complexContent' : ComplexContent,
+        'simpleContent' : SimpleContent,
+        'restriction' : Restriction,
+        'enumeration' : Enumeration,
+        'extension' : Extension,
+        'any' : Any,
     }
 
     @classmethod
     def maptag(cls, tag, fn):
         """
         Map (override) tag => I{class} mapping.
-        @param tag: An xsd tag name.
+        @param tag: An XSD tag name.
         @type tag: str
         @param fn: A function or class.
         @type fn: fn|class.
@@ -754,8 +790,6 @@ class Factory:
         fn = cls.tags.get(root.name)
         if fn is not None:
             return fn(schema, root)
-        else:
-            return None
 
     @classmethod
     def build(cls, root, schema, filter=('*',)):
@@ -806,7 +840,7 @@ class Factory:
             types[c.qname] = c
         for i in imports:
             children.remove(i)
-        return (children, imports, attributes, elements, types, groups, agrps)
+        return children, imports, attributes, elements, types, groups, agrps
 
 
 #######################################################
